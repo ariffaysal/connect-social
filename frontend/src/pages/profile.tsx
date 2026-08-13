@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_URL } from '../lib/api';
 
 type Profile = {
   userId: number;
@@ -12,13 +13,13 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('rbms_token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('connectsocial_token') : null;
     if (!token) {
       setError('Please login first.');
       return;
     }
 
-    fetch('http://localhost:3001/auth/profile', {
+    fetch(`${API_URL}/auth/profile`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

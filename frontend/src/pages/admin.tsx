@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_URL } from '../lib/api';
 
 type User = {
   id: number;
@@ -17,14 +18,14 @@ export default function AdminDashboard() {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('rbms_token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('connectsocial_token') : null;
     if (!token) {
       setError('Please login first.');
       return;
     }
 
     // First fetch profile to verify role
-    fetch('http://localhost:3001/auth/profile', {
+    fetch(`${API_URL}/auth/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (res) => {
@@ -34,7 +35,7 @@ export default function AdminDashboard() {
         if (data.role !== 'SuperAdmin') {
           throw new Error('Access denied. Super Admin only.');
         }
-        return fetch('http://localhost:3001/users', {
+        return fetch(`${API_URL}/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
       })
@@ -53,9 +54,9 @@ export default function AdminDashboard() {
     e.preventDefault();
     setError('');
     setSuccess('');
-    const token = localStorage.getItem('rbms_token');
+    const token = localStorage.getItem('connectsocial_token');
     try {
-      const res = await fetch('http://localhost:3001/users', {
+      const res = await fetch(`${API_URL}/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

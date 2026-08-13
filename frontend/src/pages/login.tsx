@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/router';
+import { API_URL } from '../lib/api';
 
 export default function Login() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3001/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -27,7 +28,7 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem('rbms_token', result.access_token);
+      localStorage.setItem('connectsocial_token', result.access_token);
       router.push('/');
     } catch (err) {
       setError('Unable to reach backend.');

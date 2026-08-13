@@ -3,7 +3,16 @@ node_modules
 dist
 .next
 .env
+.env.local
+.env.*.local
+!.env.example
 .DS_Store
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Freebuff tooling
+.freebuff/
+
+# Vercel
+.vercel/

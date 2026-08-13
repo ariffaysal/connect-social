@@ -3,20 +3,20 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeor
 @Entity()
 export class Post {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  title: string;
+  title!: string;
 
   @Column('text')
-  content: string;
+  content!: string;
 
   @Column()
-  ownerId: number;
+  ownerId!: number;
 
   @Column()
-  ownerUsername: string;
+  ownerUsername!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }

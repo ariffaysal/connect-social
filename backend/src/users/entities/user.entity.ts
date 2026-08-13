@@ -4,10 +4,10 @@ import { Role } from '../../auth/roles.enum';
 @Entity()
 export class User {
   @PrimaryGeneratedColumn()
-  userId: number;
+  userId!: number;
 
   @Column({ unique: true })
-  username: string;
+  username!: string;
 
   @Column()
   password?: string; // Storing plain text for demo, or you could hash it
@@ -17,5 +17,5 @@ export class User {
     enum: Role,
     default: Role.Guest,
   })
-  role: Role;
+  role!: Role;
 }

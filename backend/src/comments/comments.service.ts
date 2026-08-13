@@ -25,6 +25,6 @@ export class CommentsService {
 
   async delete(id: number): Promise<boolean> {
     const result = await this.commentRepository.delete(id);
-    return result.affected !== undefined && result.affected > 0;
+    return (result.affected ?? 0) > 0;
   }
 }

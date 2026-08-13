@@ -14,13 +14,15 @@ import { Comment } from './comments/entities/comment.entity';
   imports: [
     TypeOrmModule.forRoot({
       type: 'mysql',
-      host: '127.0.0.1',
-      port: 3307,
-      username: 'root',
-      password: '',
-      database: 'rbms_task',
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: Number(process.env.DB_PORT) || 3307,
+      username: process.env.DB_USERNAME || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'connect_social',
       entities: [User, Post, Comment],
-      synchronize: true, // For development only
+      // Auto-creates tables while developing. Disable (`false`) in production
+      // and use migrations instead.
+      synchronize: process.env.DB_SYNCHRONIZE !== 'false',
     }),
     AuthModule, 
     UsersModule, 

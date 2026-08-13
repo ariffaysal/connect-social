@@ -1,14 +1,15 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { API_URL } from '../lib/api';
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [role, setRole] = useState('');
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('rbms_token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('connectsocial_token') : null;
     if (token) {
-      fetch('http://localhost:3001/auth/profile', {
+      fetch(`${API_URL}/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then(async (res) => {
@@ -23,7 +24,7 @@ export default function Home() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('rbms_token');
+    localStorage.removeItem('connectsocial_token');
     setIsLoggedIn(false);
     setRole('');
   };
@@ -32,7 +33,7 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50 px-6 py-16 text-slate-900">
       <div className="mx-auto max-w-3xl rounded-3xl bg-white p-10 shadow-xl shadow-slate-200/70">
         <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-semibold tracking-tight">RBMS Task</h1>
+          <h1 className="text-4xl font-semibold tracking-tight">ConnectSocial</h1>
           {isLoggedIn && (
             <button onClick={handleLogout} className="text-sm font-medium text-rose-600 hover:text-rose-800 transition">
               Logout
@@ -40,7 +41,8 @@ export default function Home() {
           )}
         </div>
         <p className="mt-4 text-slate-600 leading-7">
-          A starter monorepo with a Next.js frontend, Tailwind CSS styles, and a NestJS backend using JWT authentication.
+          A private social media platform for your company or team. Share posts, leave comments,
+          and keep everyone in the loop — with role-based moderation built in.
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -66,12 +68,13 @@ export default function Home() {
         </div>
 
         <div className="mt-10 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-          <h2 className="text-2xl font-semibold">How to use</h2>
-          <ol className="mt-4 space-y-3 text-slate-700 list-decimal list-inside">
-            <li>Run the backend on port <strong>3001</strong>.</li>
-            <li>Open the frontend on port <strong>3000</strong>.</li>
-            <li>Login with <strong>admin / password</strong>.</li>
-          </ol>
+          <h2 className="text-2xl font-semibold">Demo accounts</h2>
+          <ul className="mt-4 space-y-2 text-slate-700">
+            <li><strong>admin</strong> / password — SuperAdmin</li>
+            <li><strong>moderator</strong> / password — Moderator</li>
+            <li><strong>user</strong> / password — RegularUser</li>
+            <li><strong>guest</strong> / guest — Guest (read-only)</li>
+          </ul>
         </div>
       </div>
     </main>

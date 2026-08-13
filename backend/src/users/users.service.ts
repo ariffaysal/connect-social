@@ -32,7 +32,7 @@ export class UsersService implements OnModuleInit {
     return this.userRepository.find();
   }
 
-  async findOne(username: string): Promise<User | undefined> {
+  async findOne(username: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { username } });
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_URL } from '../lib/api';
 
 type Comment = {
   id: number;
@@ -36,9 +37,9 @@ export default function PostsPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('rbms_token');
+      const token = localStorage.getItem('connectsocial_token');
       if (token) {
-        const profileRes = await fetch('http://localhost:3001/auth/profile', {
+        const profileRes = await fetch(`${API_URL}/auth/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (profileRes.ok) {
@@ -48,14 +49,14 @@ export default function PostsPage() {
         }
       }
 
-      const postsRes = await fetch('http://localhost:3001/posts');
+      const postsRes = await fetch(`${API_URL}/posts`);
       if (!postsRes.ok) throw new Error('Failed to fetch posts');
       const postsData = await postsRes.json();
 
       // Fetch comments for each post
       const postsWithComments = await Promise.all(
         postsData.map(async (post: Post) => {
-          const cRes = await fetch(`http://localhost:3001/posts/${post.id}/comments`);
+          const cRes = await fetch(`${API_URL}/posts/${post.id}/comments`);
           const commentsData = cRes.ok ? await cRes.json() : [];
           return { ...post, comments: commentsData };
         })
@@ -69,9 +70,9 @@ export default function PostsPage() {
 
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('rbms_token');
+    const token = localStorage.getItem('connectsocial_token');
     try {
-      const res = await fetch('http://localhost:3001/posts', {
+      const res = await fetch(`${API_URL}/posts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,9 +90,9 @@ export default function PostsPage() {
   };
 
   const handleDeletePost = async (id: number) => {
-    const token = localStorage.getItem('rbms_token');
+    const token = localStorage.getItem('connectsocial_token');
     try {
-      const res = await fetch(`http://localhost:3001/posts/${id}`, {
+      const res = await fetch(`${API_URL}/posts/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -103,11 +104,11 @@ export default function PostsPage() {
   };
 
   const handleCreateComment = async (postId: number) => {
-    const token = localStorage.getItem('rbms_token');
+    const token = localStorage.getItem('connectsocial_token');
     const content = commentContent[postId];
     if (!content) return;
     try {
-      const res = await fetch(`http://localhost:3001/posts/${postId}/comments`, {
+      const res = await fetch(`${API_URL}/posts/${postId}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,9 +125,9 @@ export default function PostsPage() {
   };
 
   const handleDeleteComment = async (commentId: number) => {
-    const token = localStorage.getItem('rbms_token');
+    const token = localStorage.getItem('connectsocial_token');
     try {
-      const res = await fetch(`http://localhost:3001/comments/${commentId}`, {
+      const res = await fetch(`${API_URL}/comments/${commentId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

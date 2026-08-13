@@ -1,5 +1,5 @@
 {
-  "name": "rbms-task",
+  "name": "connect-social",
   "private": true,
   "workspaces": [
     "frontend",
