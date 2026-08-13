@@ -104,7 +104,7 @@ npm run dev
 | `admin`    | `password` | SuperAdmin  |
 | `moderator`| `password` | Moderator   |
 | `user`     | `password` | RegularUser |
-| `guest`    | `guest`    | Guest       |
+| `guest`    | `guest123`| Guest       |
 
 ## 🔐 Role Permissions
 

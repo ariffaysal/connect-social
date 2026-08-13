@@ -15,6 +15,7 @@ import { CommentsService } from './comments.service';
 import { PostsService } from '../posts/posts.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
@@ -26,9 +27,10 @@ export class CommentsController {
     private readonly postsService: PostsService,
   ) {}
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get('posts/:postId/comments')
-  async getComments(@Param('postId', ParseIntPipe) postId: number) {
-    return this.commentsService.findByPost(postId);
+  async getComments(@Request() req: any, @Param('postId', ParseIntPipe) postId: number) {
+    return this.commentsService.findByPost(postId, req.user?.userId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -40,8 +42,7 @@ export class CommentsController {
     @Body() body: CreateCommentDto,
   ) {
     const comment = await this.commentsService.create(
-      req.user.userId,
-      req.user.username,
+      { userId: req.user.userId, username: req.user.username },
       postId,
       body.content,
     );

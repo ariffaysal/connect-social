@@ -1,24 +1,25 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CommentsService } from './comments.service';
-import { CommentsController } from './comments.controller';
+import { ReactionsService } from './reactions.service';
+import { ReactionsController } from './reactions.controller';
+import { Reaction } from './entities/reaction.entity';
 import { AuthModule } from '../auth/auth.module';
 import { PostsModule } from '../posts/posts.module';
-import { Comment } from './entities/comment.entity';
-import { Reaction } from '../reactions/entities/reaction.entity';
+import { CommentsModule } from '../comments/comments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Comment, Reaction]),
+    TypeOrmModule.forFeature([Reaction]),
     AuthModule,
     PostsModule,
+    CommentsModule,
     NotificationsModule,
     MonitoringModule,
   ],
-  controllers: [CommentsController],
-  providers: [CommentsService],
-  exports: [CommentsService],
+  controllers: [ReactionsController],
+  providers: [ReactionsService],
+  exports: [ReactionsService],
 })
-export class CommentsModule {}
+export class ReactionsModule {}

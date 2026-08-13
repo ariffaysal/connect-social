@@ -10,4 +10,11 @@ export class UpdatePostDto {
   @IsOptional()
   @MaxLength(2000)
   content?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  departmentId?: number;
 }

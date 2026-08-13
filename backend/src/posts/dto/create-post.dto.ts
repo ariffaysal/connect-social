@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreatePostDto {
   @IsString()
@@ -10,4 +10,11 @@ export class CreatePostDto {
   @IsNotEmpty()
   @MaxLength(2000)
   content!: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  departmentId?: number;
 }
