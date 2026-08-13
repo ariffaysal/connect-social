@@ -6,7 +6,7 @@ import { Role } from '../auth/roles.enum';
 import { Department } from '../departments/entities/department.entity';
 import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
-import { Reaction } from '../reactions/entities/reaction.entity';
+import { Reaction, ReactionType } from '../reactions/entities/reaction.entity';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -80,6 +80,129 @@ export class UsersService implements OnModuleInit {
       if (!existing) {
         await this.departmentRepository.save(this.departmentRepository.create(d));
       }
+    }
+
+    await this.seedDemoContent();
+  }
+
+  /**
+   * Seed a small set of demo posts/comments/reactions so a fresh database
+   * shows a populated feed. Only runs when there are no posts yet.
+   */
+  private async seedDemoContent() {
+    const existingPosts = await this.postRepository.count();
+    if (existingPosts > 0) return;
+
+    const [admin, moderator, user, guest, engineering, marketing, sales] = await Promise.all([
+      this.userRepository.findOne({ where: { username: 'admin' } }),
+      this.userRepository.findOne({ where: { username: 'moderator' } }),
+      this.userRepository.findOne({ where: { username: 'user' } }),
+      this.userRepository.findOne({ where: { username: 'guest' } }),
+      this.departmentRepository.findOne({ where: { name: 'Engineering' } }),
+      this.departmentRepository.findOne({ where: { name: 'Marketing' } }),
+      this.departmentRepository.findOne({ where: { name: 'Sales' } }),
+    ]);
+
+    if (!admin || !moderator || !user || !guest) return;
+
+    const samplePosts = [
+      {
+        owner: admin,
+        title: 'Welcome to ConnectSocial 🎉',
+        content:
+          'Welcome everyone to our new internal social platform! This is a space to share company updates, celebrate wins, and stay connected with your colleagues.\n\nPost updates, react to your teammates’ content, and keep the conversation going. If you see something that needs attention, use the Report button and our moderators will take care of it.',
+        imageUrl:
+          'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&q=80',
+        departmentId: undefined,
+      },
+      {
+        owner: user,
+        title: 'Shipping the new dashboard 🚀',
+        content:
+          'After months of hard work, the new analytics dashboard is finally live! Users can now see real-time metrics, export reports, and customize their widgets.\n\nSpecial thanks to the whole team for the late nights and the incredible attention to detail. So proud of what we built together!',
+        imageUrl:
+          'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&q=80',
+        departmentId: engineering?.id,
+      },
+      {
+        owner: moderator,
+        title: 'Q3 marketing review is scheduled',
+        content:
+          'Reminder: our Q3 marketing review is scheduled for Thursday at 2pm in the main conference room (and on Zoom for remote teammates).\n\nWe’ll go over campaign performance, upcoming launches, and next quarter’s priorities. Please bring your updates!',
+        imageUrl: undefined,
+        departmentId: marketing?.id,
+      },
+      {
+        owner: user,
+        title: 'Quarterly sales target update',
+        content:
+          'Great news everyone — we hit 112% of our quarterly sales target! 🎉\n\nThanks to the entire sales team for an incredible push, and to everyone across the company who supported us along the way.',
+        imageUrl: undefined,
+        departmentId: sales?.id,
+      },
+    ];
+
+    const savedPosts: Post[] = [];
+    for (const sample of samplePosts) {
+      const post = await this.postRepository.save(
+        this.postRepository.create({
+          ownerId: sample.owner.userId,
+          ownerUsername: sample.owner.username,
+          title: sample.title,
+          content: sample.content,
+          imageUrl: sample.imageUrl,
+          departmentId: sample.departmentId,
+        }),
+      );
+      savedPosts.push(post);
+    }
+
+    // A few comments across the posts
+    const sampleComments = [
+      { post: savedPosts[0], owner: user, content: 'This is awesome! Welcome everyone 👋' },
+      { post: savedPosts[0], owner: moderator, content: 'Glad to have everyone here!' },
+      { post: savedPosts[1], owner: admin, content: 'Incredible work, team! 🎉' },
+      { post: savedPosts[1], owner: moderator, content: 'The dashboard looks stunning.' },
+      { post: savedPosts[2], owner: admin, content: 'I’ll be there, thanks for the reminder!' },
+      { post: savedPosts[3], owner: admin, content: 'Huge milestone, congrats sales team!' },
+    ];
+
+    const savedComments: Comment[] = [];
+    for (const sample of sampleComments) {
+      if (!sample.post) continue;
+      const comment = await this.commentRepository.save(
+        this.commentRepository.create({
+          postId: sample.post.id,
+          ownerId: sample.owner.userId,
+          ownerUsername: sample.owner.username,
+          content: sample.content,
+        }),
+      );
+      savedComments.push(comment);
+    }
+
+    // Some reactions (like/love/wow) sprinkled across posts and comments
+    const reactionSeed: { type: ReactionType; owner: User; postId?: number; commentId?: number }[] = [
+      { type: ReactionType.Like, owner: admin, postId: savedPosts[1]?.id },
+      { type: ReactionType.Love, owner: moderator, postId: savedPosts[1]?.id },
+      { type: ReactionType.Like, owner: user, postId: savedPosts[2]?.id },
+      { type: ReactionType.Love, owner: user, postId: savedPosts[3]?.id },
+      { type: ReactionType.Like, owner: guest, postId: savedPosts[0]?.id },
+      { type: ReactionType.Wow, owner: user, commentId: savedComments[2]?.id },
+      { type: ReactionType.Like, owner: admin, commentId: savedComments[4]?.id },
+    ];
+
+    for (const r of reactionSeed) {
+      if (r.postId === undefined && r.commentId === undefined) continue;
+      await this.reactionRepository.save(
+        this.reactionRepository.create({
+          type: r.type,
+          ownerId: r.owner.userId,
+          ownerUsername: r.owner.username,
+          postId: r.postId,
+          commentId: r.commentId,
+        }),
+      );
     }
   }
 

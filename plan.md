@@ -159,5 +159,6 @@ Feed shows reactions inline, images, comment counts, and a compose box that mirr
 
 ## 8. Status
 
-- Backend groundwork was partially started in the session (entities, modules, services for departments, reactions, notifications, reports, monitoring).
-- Remaining: finish wiring in `app.module.ts`, verify backend against a running MariaDB, then build the frontend pages listed in section 5, then deploy a preview.
+- **1-3 (Backend) — DONE.** All entities/modules/services/controllers implemented and wired in `app.module.ts`; MariaDB running with auto-created schema; all endpoints smoke-tested (47/47 pass).
+- **4-11 (Frontend) — DONE.** Shared top nav with unread notification badge; Facebook-style feed (composer, images, reactions, comments, department filter, report); profile pages (edit own + public profile); notifications page; moderation queue; monitoring/analytics; upgraded admin page (users + departments); richer demo data seeded on first boot.
+- **12 — DONE.** Build passes; app running locally on `localhost:3000` (frontend) + `localhost:3001` (backend) for continuous checking. Deployment/preview pending user decision.

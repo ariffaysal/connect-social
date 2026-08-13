@@ -29,7 +29,7 @@ export default function Login() {
       }
 
       localStorage.setItem('connectsocial_token', result.access_token);
-      router.push('/');
+      router.push('/feed');
     } catch (err) {
       setError('Unable to reach backend.');
       setLoading(false);
@@ -41,7 +41,7 @@ export default function Login() {
       <div className="mx-auto max-w-md rounded-3xl bg-white p-10 shadow-xl shadow-slate-200/70">
         <h1 className="text-3xl font-semibold">Login</h1>
         <p className="mt-2 text-slate-600">
-          Use one of the demo accounts: <strong>admin/password</strong>, <strong>moderator/password</strong>, <strong>user/password</strong>, or <strong>guest/guest</strong>.
+          Use one of the demo accounts: <strong>admin/password</strong>, <strong>moderator/password</strong>, <strong>user/password</strong>, or <strong>guest/guest123</strong>.
         </p>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>

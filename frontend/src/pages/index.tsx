@@ -52,6 +52,9 @@ export default function Home() {
             </Link>
           ) : (
             <>
+              <Link href="/feed" className="rounded-2xl bg-indigo-600 px-5 py-4 text-center text-white font-medium transition hover:bg-indigo-700 sm:col-span-2">
+                Open Feed
+              </Link>
               <Link href="/profile" className="rounded-2xl bg-slate-100 px-5 py-4 text-center text-slate-900 font-medium transition hover:bg-slate-200 border border-slate-200">
                 Profile
               </Link>
@@ -73,7 +76,7 @@ export default function Home() {
             <li><strong>admin</strong> / password — SuperAdmin</li>
             <li><strong>moderator</strong> / password — Moderator</li>
             <li><strong>user</strong> / password — RegularUser</li>
-            <li><strong>guest</strong> / guest — Guest (read-only)</li>
+            <li><strong>guest</strong> / guest123 — Guest (read-only)</li>
           </ul>
         </div>
       </div>
