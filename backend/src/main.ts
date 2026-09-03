@@ -2,6 +2,8 @@ import 'dotenv/config';
 import helmet from 'helmet';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { RealtimeService } from './realtime/realtime.service';
 import { resolveUploadDir } from './uploads/upload-dir';
@@ -10,8 +12,14 @@ import { resolveUploadDir } from './uploads/upload-dir';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const express = require('express');
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+const logger = new Logger('Bootstrap');
+
+/**
+ * Build (but do not listen on) the fully configured Nest application.
+ * Used by both the local listener and the serverless handler.
+ */
+async function createApp(): Promise<NestExpressApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Security headers for the API. CSP is handled by the frontend's
@@ -38,18 +46,44 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Run module lifecycle hooks (TypeORM schema sync + demo seeding) before
+  // the first request is served.
+  await app.init();
+  return app;
+}
+
+/**
+ * Vercel serverless entry point (@vercel/node). Vercel sets VERCEL=1, so this
+ * default export is used there instead of the local bootstrap() listener.
+ */
+let cachedApp: NestExpressApplication | null = null;
+
+export default async function handler(req: Request, res: Response) {
+  const app = cachedApp ?? (cachedApp = await createApp());
+  const server = app.getHttpAdapter().getInstance();
+  return server(req, res);
+}
+
+/** Local / self-hosted entry point: bind a real port and start the WS hub. */
+async function bootstrap() {
+  const app = await createApp();
+
   const port = Number(process.env.PORT) || 3001;
   await app.listen(port);
 
-  // Attach the realtime WebSocket hub when the HTTP server supports upgrades
-  // (local / self-hosted). Serverless hosts like Vercel cannot accept WebSocket
-  // connections, so never let a failed attach take the whole app down.
+  // Attach the realtime WebSocket hub (only meaningful on a long-running
+  // server; serverless hosts like Vercel cannot accept WebSocket upgrades).
   try {
     app.get(RealtimeService).init(app.getHttpServer());
   } catch (err) {
-    app.get(Logger).warn(`Realtime hub not started (${(err as Error).message})`);
+    logger.warn(`Realtime hub not started (${(err as Error).message})`);
   }
   console.log(`Backend running on http://localhost:${port}`);
 }
 
-bootstrap();
+if (process.env.VERCEL !== '1') {
+  bootstrap().catch((err) => {
+    logger.error(`Fatal startup error: ${err?.stack ?? err}`);
+    process.exit(1);
+  });
+}
