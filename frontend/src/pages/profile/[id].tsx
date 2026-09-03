@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -66,8 +67,16 @@ export default function PublicProfilePage() {
     }
   };
 
+  const pageTitle = target
+    ? `${target.fullName || target.username} — ConnectSocial`
+    : 'Profile — ConnectSocial';
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>{pageTitle}</title>
+        <meta name="description" content="ConnectSocial member profile." />
+      </Head>
       <TopNav profile={me} />
       <div className="mx-auto max-w-3xl px-4 py-6">
         {error && (
@@ -77,6 +86,12 @@ export default function PublicProfilePage() {
               ← Back to feed
             </Link>
           </div>
+        )}
+
+        {!target && !error && (
+          <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+            Loading profile…
+          </p>
         )}
 
         {target && !error && (

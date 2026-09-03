@@ -23,6 +23,23 @@ export class NotificationsService {
     return this.notificationRepository.save(notification);
   }
 
+  /** Bulk-create notifications (used for system-wide announcements). */
+  async createMany(
+    inputs: Array<{
+      recipientId: number;
+      actorId: number;
+      actorUsername: string;
+      type: NotificationType;
+      content: string;
+      postId?: number;
+      commentId?: number;
+    }>,
+  ): Promise<Notification[]> {
+    if (inputs.length === 0) return [];
+    const notifications = inputs.map((input) => this.notificationRepository.create(input));
+    return this.notificationRepository.save(notifications);
+  }
+
   async forUser(recipientId: number): Promise<Notification[]> {
     return this.notificationRepository.find({
       where: { recipientId },

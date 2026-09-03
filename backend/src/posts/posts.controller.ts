@@ -17,7 +17,6 @@ import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
@@ -26,7 +25,7 @@ import { Role } from '../auth/roles.enum';
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get()
   async getPosts(
     @Request() req: any,
@@ -42,7 +41,7 @@ export class PostsController {
     );
   }
 
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   async getPost(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     const post = await this.postsService.findOne(id);

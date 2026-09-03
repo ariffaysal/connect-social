@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import TopNav from '../components/TopNav';
@@ -39,7 +40,7 @@ export default function ModerationPage() {
 
   useEffect(() => {
     if (!getToken()) {
-      router.push('/login');
+      router.push('/login?next=/moderation');
       return;
     }
     if (profile && !isModOrAdmin(profile.role)) {
@@ -102,6 +103,10 @@ export default function ModerationPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>Moderation Queue — ConnectSocial</title>
+        <meta name="description" content="Review reported posts and comments." />
+      </Head>
       <TopNav profile={profile} />
       <div className="mx-auto max-w-3xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between">

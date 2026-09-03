@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -36,7 +37,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!getToken()) {
-      router.push('/login');
+      router.push('/login?next=/notifications');
       return;
     }
     load();
@@ -77,6 +78,10 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>Notifications — ConnectSocial</title>
+        <meta name="description" content="Your ConnectSocial notifications." />
+      </Head>
       <TopNav profile={profile} />
       <div className="mx-auto max-w-2xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between">
@@ -106,7 +111,7 @@ export default function NotificationsPage() {
           </p>
         ) : notifications.length === 0 ? (
           <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
-            No notifications yet. When someone comments on or reacts to your posts, it'll show up here.
+            No notifications yet. When a colleague posts or someone comments on or reacts to your posts, it'll show up here.
           </p>
         ) : (
           <div className="space-y-2">

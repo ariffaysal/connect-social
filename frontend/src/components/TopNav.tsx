@@ -1,23 +1,118 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch, clearToken, getToken, Profile, isModOrAdmin } from '../lib/auth';
+import { API_URL } from '../lib/api';
+
+type LiveNotification = {
+  id: number;
+  recipientId: number;
+  actorId: number;
+  actorUsername: string;
+  type: string;
+  postId?: number;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+type Toast = {
+  title: string;
+  body: string;
+  postId?: number;
+};
 
 export default function TopNav({ profile }: { profile: Profile | null }) {
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  const [pendingReports, setPendingReports] = useState(0);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (next: Toast) => {
+    setToast(next);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!getToken()) return;
+    const isMod = profile && isModOrAdmin(profile.role);
     const load = () => {
       apiFetch<number>('/notifications/unread-count')
         .then(setUnread)
         .catch(() => {});
+      if (isMod) {
+        apiFetch<unknown[]>('/reports?status=pending')
+          .then((reports) => setPendingReports(reports.length))
+          .catch(() => {});
+      }
     };
     load();
-    const interval = setInterval(load, 30000);
+    const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [profile]);
+
+  // Live updates over WebSocket for every logged-in user: moderators get the
+  // pending-report count, everyone gets instant new-post notifications.
+  // The 15s polling above stays as a fallback when the socket is down.
+  useEffect(() => {
+    if (!profile) return;
+    const token = getToken();
+    if (!token) return;
+    const isMod = isModOrAdmin(profile.role);
+    const base = API_URL.replace(/^http/, 'ws');
+    let ws: WebSocket | null = null;
+    let closed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      const socket = new WebSocket(`${base}/ws?token=${encodeURIComponent(token)}`);
+      ws = socket;
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string);
+          if (msg?.type === 'reports:count' && isMod) {
+            setPendingReports(Number(msg.count) || 0);
+          } else if (msg?.type === 'notifications:new' && msg?.notification) {
+            const n = msg.notification as LiveNotification;
+            setUnread((prev) => prev + 1);
+            showToast({
+              title: `New post from ${n.actorUsername}`,
+              body: n.content,
+              postId: n.postId,
+            });
+            // The badge bump is instant; re-fetch to correct for multiple
+            // tabs or notifications that arrived while the socket was down.
+            apiFetch<number>('/notifications/unread-count')
+              .then(setUnread)
+              .catch(() => {});
+          }
+        } catch {
+          /* ignore malformed messages */
+        }
+      };
+      socket.onclose = () => {
+        if (!closed) retryTimer = setTimeout(connect, 4000);
+      };
+      socket.onerror = () => socket.close();
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      ws?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
 
   const handleLogout = () => {
     clearToken();
@@ -43,9 +138,7 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-2">
           <Link href="/feed" className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">
-              C
-            </span>
+            <img src="/logo.svg" alt="ConnectSocial logo" className="h-8 w-8" />
             <span className="text-lg font-semibold tracking-tight text-slate-900">
               ConnectSocial
             </span>
@@ -54,7 +147,16 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
 
         <nav className="hidden items-center gap-1 md:flex">
           {navLink('/feed', 'Feed')}
-          {profile && isModOrAdmin(profile.role) && navLink('/moderation', 'Moderation')}
+          {profile && isModOrAdmin(profile.role) && (
+            <div className="relative">
+              {navLink('/moderation', 'Moderation')}
+              {pendingReports > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-xs font-semibold text-white">
+                  {pendingReports > 99 ? '99+' : pendingReports}
+                </span>
+              )}
+            </div>
+          )}
           {profile && profile.role === 'SuperAdmin' && navLink('/monitoring', 'Monitoring')}
           {profile && profile.role === 'SuperAdmin' && navLink('/admin', 'Admin')}
         </nav>
@@ -116,6 +218,32 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
           )}
         </div>
       </div>
+
+      {/* Live notification toast: appears when a colleague posts. */}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              🔔
+            </span>
+            <Link
+              href={toast.postId ? `/feed?post=${toast.postId}` : '/notifications'}
+              onClick={() => setToast(null)}
+              className="min-w-0 flex-1"
+            >
+              <p className="text-sm font-semibold text-slate-900">{toast.title}</p>
+              <p className="mt-0.5 line-clamp-2 text-sm text-slate-600">{toast.body}</p>
+            </Link>
+            <button
+              onClick={() => setToast(null)}
+              className="shrink-0 text-slate-400 transition hover:text-slate-600"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import TopNav from '../components/TopNav';
@@ -55,7 +56,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!getToken()) {
-      router.push('/login');
+      router.push('/login?next=/admin');
       return;
     }
     if (profile && profile.role !== 'SuperAdmin') {
@@ -175,6 +176,10 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>Admin — ConnectSocial</title>
+        <meta name="description" content="Manage users, departments and access in ConnectSocial." />
+      </Head>
       <TopNav profile={profile} />
       <div className="mx-auto max-w-5xl px-4 py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

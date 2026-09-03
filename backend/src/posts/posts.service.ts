@@ -12,6 +12,9 @@ import { User } from '../users/entities/user.entity';
 import { Role } from '../auth/roles.enum';
 import { ActivityLogService } from '../monitoring/activity-log.service';
 import { ActivityAction } from '../monitoring/entities/activity-log.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
 export class PostsService {
@@ -25,6 +28,8 @@ export class PostsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly activityLogService: ActivityLogService,
+    private readonly notificationsService: NotificationsService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   private async resolveViewer(userId?: number): Promise<User | null> {
@@ -173,6 +178,31 @@ export class PostsService {
       action: ActivityAction.PostCreated,
       detail: `Created post "${title}"`,
     });
+
+    // Live "new post" announcement: notify every active user except the
+    // author, then push notifications:new to their connected sockets so the
+    // bell badge bumps instantly (15s polling stays as fallback).
+    const activeUsers = await this.userRepository.find({ where: { isActive: true } });
+    const recipients = activeUsers.filter((u) => u.userId !== ownerId);
+    if (recipients.length > 0) {
+      const shortTitle = title.length > 80 ? `${title.slice(0, 80)}…` : title;
+      const notifications = await this.notificationsService.createMany(
+        recipients.map((u) => ({
+          recipientId: u.userId,
+          actorId: ownerId,
+          actorUsername: ownerUsername,
+          type: NotificationType.System,
+          content: `“${shortTitle}”`,
+          postId: saved.id,
+        })),
+      );
+      for (const notification of notifications) {
+        this.realtimeService.sendToUser(notification.recipientId, 'notifications:new', {
+          notification,
+        });
+      }
+    }
+
     return saved;
   }
 

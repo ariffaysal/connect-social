@@ -7,6 +7,7 @@ import { Department } from '../departments/entities/department.entity';
 import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { Reaction, ReactionType } from '../reactions/entities/reaction.entity';
+import { hashPassword } from '../auth/password.util';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -62,7 +63,10 @@ export class UsersService implements OnModuleInit {
     for (const u of defaultUsers) {
       const existing = await this.userRepository.findOne({ where: { username: u.username } });
       if (!existing) {
-        const newUser = this.userRepository.create(u);
+        const newUser = this.userRepository.create({
+          ...u,
+          password: await hashPassword(u.password),
+        });
         await this.userRepository.save(newUser);
       }
     }
@@ -220,12 +224,24 @@ export class UsersService implements OnModuleInit {
   }
 
   async create(userDto: Partial<User>): Promise<User> {
-    const user = this.userRepository.create(userDto);
+    const data = { ...userDto };
+    if (data.password) {
+      data.password = await hashPassword(data.password);
+    }
+    const user = this.userRepository.create(data);
     return this.userRepository.save(user);
   }
 
+  /**
+   * Updates a user. Any plaintext password supplied here (admin reset or the
+   * automatic login upgrade) is hashed before being persisted.
+   */
   async update(userId: number, partial: Partial<User>): Promise<User | null> {
-    await this.userRepository.update(userId, partial);
+    const data = { ...partial };
+    if (data.password) {
+      data.password = await hashPassword(data.password);
+    }
+    await this.userRepository.update(userId, data);
     return this.findById(userId);
   }
 

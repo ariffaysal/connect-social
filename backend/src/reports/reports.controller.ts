@@ -10,6 +10,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportStatus } from './entities/report.entity';
@@ -17,6 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
+import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityLogService } from '../monitoring/activity-log.service';
 import { ActivityAction } from '../monitoring/entities/activity-log.entity';
 
@@ -26,8 +28,10 @@ export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,
     private readonly activityLogService: ActivityLogService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post()
   async create(@Request() req: any, @Body() dto: CreateReportDto) {
     const report = await this.reportsService.create(
@@ -40,6 +44,7 @@ export class ReportsController {
       action: ActivityAction.ReportFiled,
       detail: `Reported ${dto.targetType} #${dto.targetId}`,
     });
+    await this.pushModerationCount();
     return report;
   }
 
@@ -71,6 +76,7 @@ export class ReportsController {
       action: ActivityAction.Moderation,
       detail: `Resolved report #${id}${body?.deleteTarget ? ' and removed target' : ''}`,
     });
+    await this.pushModerationCount();
     return report;
   }
 
@@ -85,6 +91,12 @@ export class ReportsController {
       action: ActivityAction.Moderation,
       detail: `Dismissed report #${id}`,
     });
+    await this.pushModerationCount();
     return report;
+  }
+
+  private async pushModerationCount() {
+    const count = await this.reportsService.pendingCount();
+    this.realtimeService.sendToModerators('reports:count', { count });
   }
 }

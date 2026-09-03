@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PostsModule } from '../posts/posts.module';
 import { CommentsModule } from '../comments/comments.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module';
     PostsModule,
     CommentsModule,
     MonitoringModule,
+    RealtimeModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],

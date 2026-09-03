@@ -8,12 +8,16 @@ import { Comment } from '../comments/entities/comment.entity';
 import { Reaction } from '../reactions/entities/reaction.entity';
 import { User } from '../users/entities/user.entity';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Post, Comment, Reaction, User]),
     AuthModule,
     MonitoringModule,
+    NotificationsModule,
+    RealtimeModule,
   ],
   controllers: [PostsController],
   providers: [PostsService],

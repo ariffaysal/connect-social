@@ -1,9 +1,12 @@
+import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import TopNav from '../components/TopNav';
 import ProfileView from '../components/ProfileView';
+import Avatar from '../components/Avatar';
 import useProfile from '../hooks/useProfile';
 import { apiFetch, getToken, Profile } from '../lib/auth';
+import { uploadImage } from '../lib/upload';
 
 export default function MyProfilePage() {
   const router = useRouter();
@@ -11,6 +14,8 @@ export default function MyProfilePage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState('');
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -21,7 +26,7 @@ export default function MyProfilePage() {
 
   useEffect(() => {
     if (!getToken()) {
-      router.push('/login');
+      router.push('/login?next=/profile');
       return;
     }
   }, [router]);
@@ -37,6 +42,20 @@ export default function MyProfilePage() {
       });
     }
   }, [profile]);
+
+  const handleAvatarFile = async (file?: File | null) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    setAvatarMsg('');
+    try {
+      const url = await uploadImage(file);
+      setForm((prev) => ({ ...prev, avatarUrl: url }));
+    } catch (err: any) {
+      setAvatarMsg(err.message);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +105,10 @@ export default function MyProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>My Profile — ConnectSocial</title>
+        <meta name="description" content="Your ConnectSocial profile." />
+      </Head>
       <TopNav profile={profile} />
       <div className="mx-auto max-w-3xl px-4 py-6">
         {message && (
@@ -110,7 +133,54 @@ export default function MyProfilePage() {
                 {input('fullName', 'Full name')}
                 {input('email', 'Email')}
                 {input('jobTitle', 'Job title')}
-                {input('avatarUrl', 'Avatar URL')}
+                <label className="block sm:col-span-2">
+                  <span className="text-sm font-medium text-slate-700">
+                    Profile picture
+                  </span>
+                  <div className="mt-1 flex items-center gap-3">
+                    <Avatar
+                      name={form.fullName || '?'}
+                      avatarUrl={form.avatarUrl || undefined}
+                      size="lg"
+                    />
+                    <label
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleAvatarFile(e.dataTransfer.files?.[0]);
+                      }}
+                      className="flex flex-1 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500 transition hover:border-indigo-300 hover:bg-indigo-50/50"
+                    >
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          handleAvatarFile(e.target.files?.[0]);
+                          e.target.value = '';
+                        }}
+                      />
+                      {uploadingAvatar ? (
+                        <span className="font-medium text-indigo-600">
+                          Uploading…
+                        </span>
+                      ) : form.avatarUrl ? (
+                        <span className="font-medium">
+                          Click to replace picture
+                        </span>
+                      ) : (
+                        <span className="font-medium">
+                          Drag & drop or click to upload a picture
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  {avatarMsg && (
+                    <p className="mt-1 text-xs font-medium text-rose-600">
+                      {avatarMsg}
+                    </p>
+                  )}
+                </label>
               </div>
               {input('bio', 'Bio', true)}
               <label className="block">

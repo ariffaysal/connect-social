@@ -33,6 +33,12 @@ export class ReportsService {
     });
   }
 
+  async pendingCount(): Promise<number> {
+    return this.reportRepository.count({
+      where: { status: ReportStatus.Pending },
+    });
+  }
+
   async resolve(id: number, resolverId: number, deleteTarget = false): Promise<Report> {
     const report = await this.reportRepository.findOne({ where: { id } });
     if (!report) throw new NotFoundException('Report not found');

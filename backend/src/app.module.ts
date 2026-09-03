@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -12,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
@@ -34,6 +37,14 @@ import { ActivityLog } from './monitoring/entities/activity-log.entity';
       // Auto-creates tables while developing. Disable (`false`) in production
       // and use migrations instead.
       synchronize: process.env.DB_SYNCHRONIZE !== 'false',
+      // Test-only: wipe and recreate the schema on boot for clean isolation
+      // (defaults to off outside the jest suite).
+      dropSchema: process.env.DB_DROP_SCHEMA === 'true',
+    }),
+    // Loose global default; stricter limits are applied per route
+    // (login, report creation) with the @Throttle decorator.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
     }),
     AuthModule,
     UsersModule,
@@ -45,8 +56,15 @@ import { ActivityLog } from './monitoring/entities/activity-log.entity';
     ReportsModule,
     MonitoringModule,
     UploadsModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

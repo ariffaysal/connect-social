@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -6,7 +7,7 @@ import Avatar from '../components/Avatar';
 import ReactionBar, { ReactionSummary } from '../components/ReactionBar';
 import useProfile from '../hooks/useProfile';
 import { apiFetch, canPost, getToken, isModOrAdmin } from '../lib/auth';
-import { API_URL } from '../lib/api';
+import { uploadImage } from '../lib/upload';
 import { timeAgo } from '../lib/format';
 
 type Department = { id: number; name: string; description?: string; color: string };
@@ -57,6 +58,7 @@ export default function FeedPage() {
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [filter, setFilter] = useState<number | 'all' | 'company'>('all');
   const [error, setError] = useState('');
+  const [loadingPosts, setLoadingPosts] = useState(true);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -92,12 +94,15 @@ export default function FeedPage() {
         : `/posts?departmentId=${next}`;
 
   const loadPosts = useCallback(async (next: number | 'all' | 'company') => {
+    setLoadingPosts(true);
     try {
       const data = await apiFetch<FeedPost[]>(queryFor(next));
       setPosts(data);
       setError('');
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoadingPosts(false);
     }
   }, []);
 
@@ -108,6 +113,15 @@ export default function FeedPage() {
       setTopUsers([]);
     }
   }, []);
+
+  // Reads are private: anonymous visitors have no token, so the backend
+  // rejects every feed request. Send them to the login page instead, and
+  // bring them back here after signing in (?next=).
+  useEffect(() => {
+    if (!getToken()) {
+      router.push('/login?next=/feed');
+    }
+  }, [router]);
 
   useEffect(() => {
     loadDepartments();
@@ -149,31 +163,10 @@ export default function FeedPage() {
 
   const handleImageFile = async (file?: File | null) => {
     if (!file) return;
-    if (!/^image\/(png|jpeg|gif|webp)$/i.test(file.type)) {
-      setUploadMsg('Only PNG, JPG, GIF or WebP images can be uploaded.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadMsg('Image must be 5 MB or smaller.');
-      return;
-    }
     setUploading(true);
     setUploadMsg('');
     try {
-      const body = new FormData();
-      body.append('file', file);
-      const res = await fetch(`${API_URL}/uploads`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (data as { message?: string }).message || 'Image upload failed',
-        );
-      }
-      setImageUrl((data as { url: string }).url);
+      setImageUrl(await uploadImage(file));
     } catch (err: any) {
       setUploadMsg(err.message);
     } finally {
@@ -312,6 +305,14 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <Head>
+        <title>Feed — ConnectSocial</title>
+        <meta
+          name="description"
+          content="Company feed — share updates, comment and react with your colleagues."
+        />
+      </Head>
+      <h1 className="sr-only">Feed</h1>
       <TopNav profile={profile} />
 
       <div className="mx-auto max-w-7xl px-4 py-6">
@@ -500,23 +501,17 @@ export default function FeedPage() {
               </div>
             )}
 
-            {!profile && (
-              <div className="rounded-2xl bg-indigo-50 p-4 text-sm text-indigo-800">
-                You're browsing as a guest.{' '}
-                <Link href="/login" className="font-semibold underline">
-                  Log in
-                </Link>{' '}
-                to post, comment and react.
-              </div>
-            )}
-
             <div className="space-y-5">
-              {posts.length === 0 && (
+              {loadingPosts ? (
+                <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+                  Loading posts…
+                </p>
+              ) : posts.length === 0 ? (
                 <p className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
                   No posts yet. Be the first to share something!
                 </p>
-              )}
-              {posts.map((post) => {
+              ) : (
+                posts.map((post) => {
                 const postDept = deptById(post.departmentId);
                 const isExpanded = expanded[post.id];
                 return (
@@ -611,6 +606,11 @@ export default function FeedPage() {
 
                     {isExpanded && (
                       <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+                        {(post.comments ?? []).length === 0 && (
+                          <p className="text-sm text-slate-400">
+                            No comments yet — start the conversation.
+                          </p>
+                        )}
                         {(post.comments ?? []).map((comment) => (
                           <div key={comment.id} className="flex gap-2">
                             <Link href={`/profile/${comment.ownerId}`}>
@@ -688,7 +688,7 @@ export default function FeedPage() {
                     )}
                   </article>
                 );
-              })}
+              }))}
             </div>
           </main>
 
