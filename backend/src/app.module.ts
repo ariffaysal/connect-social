@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -24,15 +24,33 @@ import { Notification } from './notifications/entities/notification.entity';
 import { Report } from './reports/entities/report.entity';
 import { ActivityLog } from './monitoring/entities/activity-log.entity';
 
+function resolveDbConfig(): TypeOrmModuleOptions {
+  // Local dev defaults to MySQL via DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/
+  // DB_NAME. When DATABASE_URL points at PostgreSQL (e.g. Neon on Vercel) the
+  // pg driver is used instead — the entities are written to work on both.
+  if (process.env.DATABASE_URL?.startsWith('postgres')) {
+    return {
+      type: 'postgres',
+      url: process.env.DATABASE_URL,
+      // Neon (and most hosted Postgres) require TLS. Set DB_SSL=false to
+      // disable, e.g. for a local Postgres without certificates.
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+    };
+  }
+  return {
+    type: 'mysql',
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: Number(process.env.DB_PORT) || 3307,
+    username: process.env.DB_USERNAME || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'connect_social',
+  };
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: Number(process.env.DB_PORT) || 3307,
-      username: process.env.DB_USERNAME || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'connect_social',
+      ...resolveDbConfig(),
       entities: [User, Post, Comment, Department, Reaction, Notification, Report, ActivityLog],
       // Auto-creates tables while developing. Disable (`false`) in production
       // and use migrations instead.

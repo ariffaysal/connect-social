@@ -42,10 +42,10 @@ export class User {
   @Column({ default: 0 })
   loginCount!: number;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   lastLoginAt?: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   lastSeenAt?: Date;
 
   @CreateDateColumn()
