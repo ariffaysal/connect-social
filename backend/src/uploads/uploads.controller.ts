@@ -10,16 +10,15 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { extname, join } from 'path';
-import { mkdirSync } from 'fs';
 import { readFile, unlink } from 'fs/promises';
+import { resolveUploadDir } from './upload-dir';
 import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
 
-export const UPLOAD_DIR = join(process.cwd(), 'uploads');
-mkdirSync(UPLOAD_DIR, { recursive: true });
+export const UPLOAD_DIR = resolveUploadDir();
 
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png',

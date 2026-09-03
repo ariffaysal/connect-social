@@ -1,11 +1,10 @@
 import 'dotenv/config';
-import * as fs from 'fs';
-import * as path from 'path';
 import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { RealtimeService } from './realtime/realtime.service';
+import { resolveUploadDir } from './uploads/upload-dir';
 
 // Serve uploaded post images from the local uploads directory.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,8 +26,7 @@ async function bootstrap() {
     }),
   );
 
-  const uploadsDir = path.join(process.cwd(), 'uploads');
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  const uploadsDir = resolveUploadDir();
   app.use('/uploads', express.static(uploadsDir));
 
   // Allow the frontend origin(s). Comma-separate multiple origins, or set `*` to allow all.
