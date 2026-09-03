@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import helmet from 'helmet';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { RealtimeService } from './realtime/realtime.service';
@@ -41,7 +41,14 @@ async function bootstrap() {
   const port = Number(process.env.PORT) || 3001;
   await app.listen(port);
 
-  app.get(RealtimeService).init(app.getHttpServer());
+  // Attach the realtime WebSocket hub when the HTTP server supports upgrades
+  // (local / self-hosted). Serverless hosts like Vercel cannot accept WebSocket
+  // connections, so never let a failed attach take the whole app down.
+  try {
+    app.get(RealtimeService).init(app.getHttpServer());
+  } catch (err) {
+    app.get(Logger).warn(`Realtime hub not started (${(err as Error).message})`);
+  }
   console.log(`Backend running on http://localhost:${port}`);
 }
 
