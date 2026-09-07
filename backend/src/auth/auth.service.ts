@@ -78,22 +78,32 @@ export class AuthService {
   }
 
   async getProfile(userId: number) {
-    // Get basic user info without heavy profile queries (optimized for serverless)
-    const user = await this.usersService.findById(userId);
-    if (!user) throw new UnauthorizedException('User not found');
-    
-    // Only fetch extended profile data (counts, department) if needed
-    // This keeps the endpoint fast in serverless environments
-    const { password: _password, ...result } = user;
-    
-    // Optionally fetch department name if user has a department
-    if (user.departmentId) {
-      const dept = await this.usersService.getDepartment(user.departmentId);
-      if (dept) {
-        return { ...result, departmentName: dept.name, departmentColor: dept.color };
+    try {
+      // Get basic user info without heavy profile queries (optimized for serverless)
+      const user = await this.usersService.findById(userId);
+      if (!user) throw new UnauthorizedException('User not found');
+      
+      // Only fetch extended profile data (counts, department) if needed
+      // This keeps the endpoint fast in serverless environments
+      const { password: _password, ...result } = user;
+      
+      // Optionally fetch department name if user has a department
+      if (user.departmentId) {
+        try {
+          const dept = await this.usersService.getDepartment(user.departmentId);
+          if (dept) {
+            return { ...result, departmentName: dept.name, departmentColor: dept.color };
+          }
+        } catch (deptErr) {
+          // Log but don't fail - department info is optional
+          console.warn('Failed to fetch department:', deptErr);
+        }
       }
+      
+      return result;
+    } catch (err) {
+      console.error('getProfile error:', err);
+      throw err;
     }
-    
-    return result;
   }
 }
