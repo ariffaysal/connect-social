@@ -159,15 +159,14 @@ export default function FeedPage() {
   useEffect(() => {
     if (!getToken()) {
       router.push('/login?next=/feed');
+      return;
     }
-  }, [router]);
-
-  useEffect(() => {
+    // Only load data if we have a token
     loadDepartments();
     loadPosts(filter);
     loadLeaderboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router, getToken()]);
 
   useEffect(() => {
     if (!router.query.post || posts.length === 0) return;

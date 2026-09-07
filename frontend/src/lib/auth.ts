@@ -55,11 +55,25 @@ export async function apiFetch<T = unknown>(
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
+  // Handle network errors (offline, DNS failure, CORS blocks, etc.)
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    const message =
-      (data as { message?: string | string[] }).message ?? 'Request failed';
-    throw new Error(Array.isArray(message) ? message.join(', ') : message);
+    let message = 'Request failed';
+    try {
+      const data = await response.json();
+      message =
+        (data as { message?: string | string[] }).message ??
+        (Array.isArray(data) ? data.join(', ') : JSON.stringify(data));
+    } catch {
+      // Response body wasn't JSON (might be empty or text)
+      if (response.status === 0) {
+        message = 'Unable to reach backend. Check your connection and that the backend is running.';
+      } else if (response.status === 401) {
+        message = 'Session expired. Please log in again.';
+      } else {
+        message = `HTTP ${response.status}: ${response.statusText}`;
+      }
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) return undefined as T;
