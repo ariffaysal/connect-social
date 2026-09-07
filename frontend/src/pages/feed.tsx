@@ -90,14 +90,20 @@ export default function FeedPage() {
     }
   }, []);
 
-  const queryFor = (next: number | 'all' | 'company') =>
-    next === 'all'
-      ? '/posts'
-      : next === 'company'
-        ? '/posts?scope=company'
-        : `/posts?departmentId=${next}`;
+  const buildPostsUrl = (next: number | 'all' | 'company', offset: number = 0) => {
+    const params = new URLSearchParams();
+    params.set('limit', '30');
+    params.set('offset', String(offset));
+    if (next === 'company') {
+      params.set('scope', 'company');
+    } else if (next !== 'all') {
+      params.set('departmentId', String(next));
+    }
+    return `/posts?${params.toString()}`;
+  };
 
   const loadPosts = useCallback(async (next: number | 'all' | 'company', resetOffset = true) => {
+    const currentOffset = resetOffset ? 0 : offset;
     if (resetOffset) {
       setLoadingPosts(true);
       setOffset(0);
@@ -105,14 +111,19 @@ export default function FeedPage() {
       setLoadingMore(true);
     }
     try {
-      const data = await apiFetch<FeedPost[]>(`${queryFor(next)}&limit=30&offset=${resetOffset ? 0 : offset}`);
+      const data = await apiFetch<FeedPost[]>(buildPostsUrl(next, currentOffset));
+      // Data from API is now { posts, total, hasMore } but we need to handle both
+      // old array response and new paginated response for backwards compatibility
+      const postsData = Array.isArray(data) ? data : (data as any).posts || data;
+      const hasMoreData = Array.isArray(data) ? data.length === 30 : !!(data as any).hasMore;
+      
       if (resetOffset) {
-        setPosts(data);
-        setHasMore(data.length === 30);
+        setPosts(postsData);
+        setHasMore(hasMoreData);
       } else {
-        setPosts((prev) => [...prev, ...data]);
-        setHasMore(data.length === 30);
-        setOffset((prev) => prev + data.length);
+        setPosts((prev) => [...prev, ...postsData]);
+        setHasMore(hasMoreData);
+        setOffset((prev) => prev + (Array.isArray(data) ? data.length : (data as any).posts?.length || 0));
       }
       setError('');
     } catch (err: any) {
@@ -230,8 +241,9 @@ export default function FeedPage() {
         method: 'POST',
         body: JSON.stringify({ type }),
       });
-      const refreshed = await apiFetch<FeedPost[]>(queryFor(filter));
-      setPosts(refreshed);
+      const refreshed = await apiFetch<any>(buildPostsUrl(filter));
+      const postsData = Array.isArray(refreshed) ? refreshed : (refreshed as any).posts || refreshed;
+      setPosts(postsData);
     } catch (err: any) {
       setError(err.message);
     }

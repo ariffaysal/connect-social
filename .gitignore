@@ -19,3 +19,7 @@ pnpm-debug.log*
 
 # Vercel
 .vercel/
+
+# video production artifacts
+.video/
+ConnectSocial-Promo.mp4
