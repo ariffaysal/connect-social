@@ -223,6 +223,10 @@ export class UsersService implements OnModuleInit {
     return this.userRepository.findOne({ where: { userId } });
   }
 
+  async getDepartment(departmentId: number) {
+    return this.departmentRepository.findOne({ where: { id: departmentId } });
+  }
+
   async create(userDto: Partial<User>): Promise<User> {
     const data = { ...userDto };
     if (data.password) {
