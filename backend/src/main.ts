@@ -38,12 +38,17 @@ async function createApp(): Promise<NestExpressApplication> {
   app.use('/uploads', express.static(uploadsDir));
 
   // Allow the frontend origin(s). Comma-separate multiple origins, or set `*` to allow all.
-  // Default includes localhost for dev AND the Vercel frontend domain for production.
+  // When deploying to Vercel, set CORS_ORIGIN env var to your frontend URL.
+  // Default allows localhost for dev AND the Vercel frontend domain.
   const corsOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
-    : ['http://localhost:3000', 'https://connect-social-five.vercel.app'];
+    : ['http://localhost:3000', 'https://connect-social-five.vercel.app', 'http://localhost:3001'];
+  
+  // If CORS_ORIGIN is not set but DATABASE_URL is (production), allow all origins
+  // This is a fallback - in production you should explicitly set CORS_ORIGIN
+  const finalCorsOrigin = process.env.CORS_ORIGIN || (process.env.DATABASE_URL ? '*' : corsOrigins);
   app.enableCors({
-    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    origin: finalCorsOrigin.includes('*') ? true : finalCorsOrigin,
     credentials: true,
   });
 
