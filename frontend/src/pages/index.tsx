@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import { API_URL } from '../lib/api';
-import { getToken } from '../lib/auth';
+import { clearToken, getToken } from '../lib/auth';
 
 const FEATURES = [
   {
@@ -80,8 +80,12 @@ export default function Home() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (res) => {
-        if (!cancelled && res.ok) {
+        if (!cancelled && res.status === 200) {
+          // Successfully authenticated - redirect to feed
           router.replace('/feed');
+        } else if (!cancelled && res.status === 401) {
+          // Token is invalid/expired - clear it and stay on landing page
+          clearToken();
         }
       })
       .catch(() => {});
