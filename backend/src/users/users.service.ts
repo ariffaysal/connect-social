@@ -220,18 +220,12 @@ export class UsersService implements OnModuleInit {
   }
 
   async findById(userId: number): Promise<User | null> {
-    // Use findOne with just the ID for better compatibility
     return this.userRepository.findOne({ where: { userId } });
   }
 
-  async findByIdSimple(userId: number): Promise<User | null> {
-    // Alternative method using direct ID lookup
-    try {
-      return await this.userRepository.findOneBy({ userId });
-    } catch {
-      // Fallback to findOne
-      return await this.userRepository.findOne({ where: { userId } });
-    }
+  async findByUserId(userId: number): Promise<User | null> {
+    // Lookup by userId (primary key)
+    return this.userRepository.findOne({ where: { userId } });
   }
 
   async getDepartment(departmentId: number) {
