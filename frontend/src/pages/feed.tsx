@@ -158,6 +158,7 @@ export default function FeedPage() {
   // bring them back here after signing in (?next=).
   useEffect(() => {
     if (!getToken()) {
+      setLoadingPosts(false);
       router.push('/login?next=/feed');
       return;
     }
@@ -166,7 +167,7 @@ export default function FeedPage() {
     loadPosts(filter);
     loadLeaderboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, getToken()]);
+  }, [router]);
 
   useEffect(() => {
     if (!router.query.post || posts.length === 0) return;
