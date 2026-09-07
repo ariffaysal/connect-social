@@ -60,9 +60,10 @@ export async function apiFetch<T = unknown>(
     let message = 'Request failed';
     try {
       const data = await response.json();
-      message =
-        (data as { message?: string | string[] }).message ??
-        (Array.isArray(data) ? data.join(', ') : JSON.stringify(data));
+      const msg = (data as { message?: string | string[] }).message;
+      message = Array.isArray(msg)
+        ? msg.join(', ')
+        : (typeof msg === 'string' ? msg : JSON.stringify(data));
     } catch {
       // Response body wasn't JSON (might be empty or text)
       if (response.status === 0) {
