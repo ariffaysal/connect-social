@@ -262,3 +262,22 @@ Released under the [MIT License](LICENSE).
 ---
 
 Built with ❤️ by [ariffaysal](https://github.com/ariffaysal).
+
+---
+
+## Current Deployment
+
+- **Frontend:** https://connect-social-five.vercel.app
+- **Backend:** https://connect-social-api.vercel.app  
+- **Database:** Neon PostgreSQL
+
+### Environment Variables
+
+#### Frontend (Vercel)
+- `NEXT_PUBLIC_API_URL` = `https://connect-social-api.vercel.app`
+
+#### Backend (Vercel)
+- `DATABASE_URL` = PostgreSQL connection string
+- `JWT_SECRET` = `tMJtOZPGylKrhwd/1ovALtXwp8KCXjDUGFskEXHs3EtUzw5t3T8Viexf1TNt6Cmy`
+- `CORS_ORIGIN` = `https://connect-social-five.vercel.app,http://localhost:3000,http://localhost:3001`
+- `DB_SYNCHRONIZE` = `true`
