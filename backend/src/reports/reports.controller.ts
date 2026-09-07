@@ -63,6 +63,13 @@ export class ReportsController {
 
   @UseGuards(RolesGuard)
   @Roles(Role.SuperAdmin, Role.Moderator)
+  @Get('pending-count')
+  async pendingCount() {
+    return { count: await this.reportsService.pendingCount() };
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles(Role.SuperAdmin, Role.Moderator)
   @Patch(':id/resolve')
   async resolve(
     @Request() req: any,

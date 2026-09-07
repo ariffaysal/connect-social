@@ -42,15 +42,15 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) return;
-    const isMod = profile && isModOrAdmin(profile.role);
+    if (!getToken() || !profile) return;
+    const isMod = isModOrAdmin(profile.role);
     const load = () => {
       apiFetch<number>('/notifications/unread-count')
         .then(setUnread)
         .catch(() => {});
       if (isMod) {
-        apiFetch<unknown[]>('/reports?status=pending')
-          .then((reports) => setPendingReports(reports.length))
+        apiFetch<number>('/reports/pending-count')
+          .then(setPendingReports)
           .catch(() => {});
       }
     };
