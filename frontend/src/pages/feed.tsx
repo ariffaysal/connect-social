@@ -82,6 +82,14 @@ export default function FeedPage() {
   const [reportReason, setReportReason] = useState('');
   const [reportError, setReportError] = useState('');
 
+  // Post edit state
+  const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editDeptId, setEditDeptId] = useState<number | ''>('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const loadDepartments = useCallback(async () => {
     try {
       setDepartments(await apiFetch<Department[]>('/departments'));
@@ -333,8 +341,74 @@ export default function FeedPage() {
     }
   };
 
+  // Comment edit state
+  const [editingComment, setEditingComment] = useState<{
+    comment: FeedComment;
+    postId: number;
+  } | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
+
+  const handleEditComment = (comment: FeedComment, postId: number) => {
+    setEditingComment({ comment, postId });
+    setEditCommentText(comment.content);
+  };
+
+  const handleSaveCommentEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingComment || !editCommentText.trim()) return;
+    setSavingCommentEdit(true);
+    try {
+      await apiFetch(`/comments/${editingComment.comment.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content: editCommentText }),
+      });
+      setEditingComment(null);
+      await loadComments(editingComment.postId);
+      await loadPosts(filter);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingCommentEdit(false);
+    }
+  };
+
   const canDelete = (ownerId: number) =>
     profile && (ownerId === profile.userId || isModOrAdmin(profile.role));
+
+  const handleEditPost = (post: FeedPost) => {
+    setEditingPost(post);
+    setEditTitle(post.title);
+    setEditContent(post.content);
+    setEditImageUrl(post.imageUrl || '');
+    setEditDeptId(post.departmentId ?? '');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPost) return;
+    setSavingEdit(true);
+    try {
+      const payload: Record<string, unknown> = {
+        title: editTitle,
+        content: editContent,
+      };
+      if (editImageUrl) payload.imageUrl = editImageUrl;
+      if (editDeptId !== '') payload.departmentId = editDeptId;
+      else if (editImageUrl === '') payload.imageUrl = undefined;
+      
+      await apiFetch(`/posts/${editingPost.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      setEditingPost(null);
+      await loadPosts(filter);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const deptById = (id?: number) =>
     departments.find((d) => d.id === id);
@@ -619,6 +693,14 @@ export default function FeedPage() {
                             Delete
                           </button>
                         )}
+                        {profile && post.ownerId === profile.userId && (
+                          <button
+                            onClick={() => handleEditPost(post)}
+                            className="rounded-full px-3 py-1.5 text-xs font-medium text-indigo-500 transition hover:bg-indigo-50"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -684,14 +766,26 @@ export default function FeedPage() {
                                     Report
                                   </button>
                                   {canDelete(comment.ownerId) && (
-                                    <button
-                                      onClick={() =>
-                                        handleDeleteComment(comment.id, post.id)
-                                      }
-                                      className="text-[11px] font-medium text-rose-500 hover:text-rose-700"
-                                    >
-                                      Delete
-                                    </button>
+                                    <>
+                                      <button
+                                        onClick={() =>
+                                          handleDeleteComment(comment.id, post.id)
+                                        }
+                                        className="text-[11px] font-medium text-rose-500 hover:text-rose-700"
+                                      >
+                                        Delete
+                                      </button>
+                                      {profile && comment.ownerId === profile.userId && (
+                                        <button
+                                          onClick={() =>
+                                            handleEditComment(comment, post.id)
+                                          }
+                                          className="text-[11px] font-medium text-indigo-500 hover:text-indigo-700"
+                                        >
+                                          Edit
+                                        </button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -818,6 +912,139 @@ export default function FeedPage() {
               >
                 Submit Report
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit post modal */}
+      {editingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Edit Post</h2>
+              <button
+                onClick={() => setEditingPost(null)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Title</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Content</label>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  required
+                  rows={4}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Image URL (optional)</label>
+                <input
+                  value={editImageUrl}
+                  onChange={(e) => setEditImageUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                {editImageUrl && (
+                  <img
+                    src={editImageUrl}
+                    alt="Preview"
+                    className="mt-2 max-h-48 rounded-lg border border-slate-200 object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Department</label>
+                <select
+                  value={editDeptId}
+                  onChange={(e) =>
+                    setEditDeptId(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none"
+                >
+                  <option value="">🌐 All Company</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="flex-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {savingEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingPost(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit comment modal */}
+      {editingComment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Edit Comment</h2>
+              <button
+                onClick={() => setEditingComment(null)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveCommentEdit} className="mt-4 space-y-3">
+              <textarea
+                value={editCommentText}
+                onChange={(e) => setEditCommentText(e.target.value)}
+                required
+                rows={3}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+              {reportError && <p className="text-sm text-rose-600">{reportError}</p>}
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={savingCommentEdit || !editCommentText.trim()}
+                  className="flex-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {savingCommentEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingComment(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
             </form>
           </div>
         </div>

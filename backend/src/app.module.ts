@@ -35,6 +35,11 @@ function resolveDbConfig(): TypeOrmModuleOptions {
       // Neon (and most hosted Postgres) require TLS. Set DB_SSL=false to
       // disable, e.g. for a local Postgres without certificates.
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      // Connection pooling for serverless environments
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+      },
     };
   }
   return {
@@ -44,6 +49,11 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     username: process.env.DB_USERNAME || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'connect_social',
+    // Connection pooling for serverless environments
+    extra: {
+      connectionLimit: 10,
+      idleTimeout: 30000,
+    },
   };
 }
 
@@ -58,6 +68,8 @@ function resolveDbConfig(): TypeOrmModuleOptions {
       // Test-only: wipe and recreate the schema on boot for clean isolation
       // (defaults to off outside the jest suite).
       dropSchema: process.env.DB_DROP_SCHEMA === 'true',
+      // Disable logging in production to reduce overhead
+      logging: process.env.NODE_ENV !== 'production',
     }),
     // Loose global default; stricter limits are applied per route
     // (login, report creation) with the @Throttle decorator.

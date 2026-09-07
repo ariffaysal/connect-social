@@ -40,16 +40,24 @@ async function createApp(): Promise<NestExpressApplication> {
   // Allow the frontend origin(s). Comma-separate multiple origins, or set `*` to allow all.
   // When deploying to Vercel, set CORS_ORIGIN env var to your frontend URL.
   // Default allows localhost for dev AND the Vercel frontend domain.
-  const corsOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
-    : ['http://localhost:3000', 'https://connect-social-five.vercel.app', 'http://localhost:3001'];
+  let corsOrigins: string[];
   
-  // If CORS_ORIGIN is not set but DATABASE_URL is (production), allow all origins
-  // This is a fallback - in production you should explicitly set CORS_ORIGIN
-  const finalCorsOrigin = process.env.CORS_ORIGIN || (process.env.DATABASE_URL ? '*' : corsOrigins);
+  if (process.env.CORS_ORIGIN) {
+    corsOrigins = process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim());
+  } else if (process.env.DATABASE_URL) {
+    // Production: if DATABASE_URL is set but CORS_ORIGIN is not, allow all origins
+    // This is a fallback - you should set CORS_ORIGIN explicitly in production
+    corsOrigins = ['*'];
+  } else {
+    corsOrigins = ['http://localhost:3000', 'https://connect-social-five.vercel.app', 'http://localhost:3001'];
+  }
+  
+  const finalCorsOrigin = corsOrigins.includes('*') ? '*' : corsOrigins;
   app.enableCors({
-    origin: finalCorsOrigin.includes('*') ? true : finalCorsOrigin,
+    origin: finalCorsOrigin === '*' ? true : finalCorsOrigin,
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Run module lifecycle hooks (TypeORM schema sync + demo seeding) before
@@ -61,13 +69,40 @@ async function createApp(): Promise<NestExpressApplication> {
 /**
  * Vercel serverless entry point (@vercel/node). Vercel sets VERCEL=1, so this
  * default export is used there instead of the local bootstrap() listener.
+ *
+ * IMPORTANT: Vercel serverless functions are stateless and have a 30s timeout.
+ * - Each invocation creates a fresh Nest app (cold start).
+ * - WebSocket connections are NOT supported in serverless mode.
+ * - Use a persistent hosting (Railway, Render, VPS) for full WebSocket support.
+ * - DB connections should use connection pooling (TypeORM handles this).
  */
 let cachedApp: NestExpressApplication | null = null;
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+/**
+ * In production on Vercel, we need to ensure the DB connection is established
+ * quickly and that we don't do anything that blocks the 30s timeout.
+ */
 export default async function handler(req: Request, res: Response) {
+  // Warm up the app on first request (cold start).
+  // Subsequent requests in the same container reuse the cached app.
   const app = cachedApp ?? (cachedApp = await createApp());
-  const server = app.getHttpAdapter().getInstance();
-  return server(req, res);
+
+  // Handle the request through the underlying Express app
+  const expressApp = app.getHttpAdapter().getInstance();
+  return expressApp(req, res);
+}
+
+/**
+ * Ensure the app is ready to handle requests. Call this explicitly if needed.
+ * In serverless environments, this is called on each cold start.
+ */
+export async function warmup() {
+  if (!cachedApp) {
+    cachedApp = await createApp();
+  }
+  return cachedApp;
 }
 
 /** Local / self-hosted entry point: bind a real port and start the WS hub. */

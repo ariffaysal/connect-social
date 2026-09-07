@@ -11,6 +11,7 @@ backend/uploads
 !.env.example
 .DS_Store
 npm-debug.log*
+passwords.txt
 yarn-error.log*
 pnpm-debug.log*
 

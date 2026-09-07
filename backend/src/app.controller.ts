@@ -9,4 +9,13 @@ export class AppController {
   getStatus() {
     return this.appService.getStatus();
   }
+
+  @Get('health')
+  health() {
+    return {
+      status: 'ok',
+      message: 'ConnectSocial backend is running',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
