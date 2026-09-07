@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 
 export enum NotificationType {
   Comment = 'comment',
@@ -12,6 +12,7 @@ export class Notification {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Index('IDX_notification_recipient_read')
   @Column()
   recipientId!: number;
 

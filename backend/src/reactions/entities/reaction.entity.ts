@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Unique } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Unique, Index } from 'typeorm';
 
 export enum ReactionType {
   Like = 'like',
@@ -16,12 +16,15 @@ export class Reaction {
   @Column({ type: 'enum', enum: ReactionType })
   type!: ReactionType;
 
+  @Index('IDX_reaction_post')
   @Column({ nullable: true })
   postId?: number;
 
+  @Index('IDX_reaction_comment')
   @Column({ nullable: true })
   commentId?: number;
 
+  @Index('IDX_reaction_owner_post')
   @Column()
   ownerId!: number;
 

@@ -55,10 +55,14 @@ export default function FeedPage() {
   const { profile } = useProfile();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [filter, setFilter] = useState<number | 'all' | 'company'>('all');
   const [error, setError] = useState('');
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -93,16 +97,32 @@ export default function FeedPage() {
         ? '/posts?scope=company'
         : `/posts?departmentId=${next}`;
 
-  const loadPosts = useCallback(async (next: number | 'all' | 'company') => {
-    setLoadingPosts(true);
+  const loadPosts = useCallback(async (next: number | 'all' | 'company', resetOffset = true) => {
+    if (resetOffset) {
+      setLoadingPosts(true);
+      setOffset(0);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const data = await apiFetch<FeedPost[]>(queryFor(next));
-      setPosts(data);
+      const data = await apiFetch<FeedPost[]>(`${queryFor(next)}&limit=30&offset=${resetOffset ? 0 : offset}`);
+      if (resetOffset) {
+        setPosts(data);
+        setHasMore(data.length === 30);
+      } else {
+        setPosts((prev) => [...prev, ...data]);
+        setHasMore(data.length === 30);
+        setOffset((prev) => prev + data.length);
+      }
       setError('');
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoadingPosts(false);
+      if (resetOffset) {
+        setLoadingPosts(false);
+      } else {
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -145,6 +165,12 @@ export default function FeedPage() {
     setFilter(next);
     loadPosts(next);
   };
+
+  // Load more posts when scrolling near bottom
+  const loadMorePosts = useCallback(async () => {
+    if (!hasMore || loadingMore || loadingPosts) return;
+    await loadPosts(filter, false);
+  }, [filter, hasMore, loadingMore, loadingPosts]);
 
   const loadComments = async (postId: number) => {
     const comments = await apiFetch<FeedComment[]>(`/posts/${postId}/comments`);
@@ -383,6 +409,18 @@ export default function FeedPage() {
 
           {/* Center: composer + feed */}
           <main className="space-y-5">
+            {/* Infinite scroll trigger */}
+            {hasMore && (
+              <div
+                onScroll={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.scrollTop + target.clientHeight >= target.scrollHeight - 200) {
+                    loadMorePosts();
+                  }
+                }}
+                className="h-10 overflow-auto"
+              />
+            )}
             {profile && canPost(profile.role) && (
               <div className="rounded-2xl bg-white p-4 shadow-sm">
                 <div className="flex items-start gap-3">

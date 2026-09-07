@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 
 export enum ActivityAction {
   Login = 'login',
@@ -17,12 +17,14 @@ export class ActivityLog {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Index('IDX_activity_user_created')
   @Column()
   userId!: number;
 
   @Column()
   username!: string;
 
+  @Index('IDX_activity_action')
   @Column({ type: 'enum', enum: ActivityAction })
   action!: ActivityAction;
 

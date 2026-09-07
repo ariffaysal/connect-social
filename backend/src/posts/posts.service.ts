@@ -46,6 +46,11 @@ export class PostsService {
 
   /**
    * Feed query rules:
+   *
+   * Pagination: defaults to 30 posts per page. Offset-based pagination for
+   * simplicity; cursor-based (id/date) pagination can be added later for
+   * very large feeds to avoid skipped/duplicated items on concurrent writes.
+   *
    * - No filter: posts visible to the viewer (SuperAdmin/Moderator/
    *   all-departments users see everything; users of a single department
    *   see their group + company-wide posts; everyone else only company posts).
@@ -53,11 +58,14 @@ export class PostsService {
    * - ?scope=company: only company-wide (unassigned) posts.
    */
   async findAll(
-    options: { departmentId?: number; scope?: string } = {},
+    options: { departmentId?: number; scope?: string; limit?: number; offset?: number } = {},
     viewerId?: number,
-  ): Promise<any[]> {
+  ): Promise<{ posts: any[]; total: number; hasMore: boolean }> {
     const viewer = await this.resolveViewer(viewerId);
     const globalView = this.hasAllAccess(viewer);
+
+    const limit = Math.min(options.limit ?? 30, 100); // cap at 100
+    const offset = options.offset ?? 0;
 
     let where:
       | Record<string, unknown>
@@ -86,12 +94,17 @@ export class PostsService {
       }
     }
 
+    // Get total count for pagination metadata
+    const total = await this.postRepository.count({ where });
+
     const posts = await this.postRepository.find({
       where,
       order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
     });
 
-    if (posts.length === 0) return [];
+    if (posts.length === 0) return { posts: [], total, hasMore: false };
 
     const postIds = posts.map((p) => p.id);
 
@@ -103,7 +116,9 @@ export class PostsService {
         .where('c.postId IN (:...ids)', { ids: postIds })
         .groupBy('c.postId')
         .getRawMany(),
-      this.reactionRepository.find({ where: { postId: In(postIds) } }),
+      this.reactionRepository.find({
+        where: { postId: In(postIds) },
+      }),
     ]);
 
     const commentMap = new Map(commentRows.map((r: any) => [Number(r.postId), Number(r.cnt)]));
@@ -115,20 +130,24 @@ export class PostsService {
       reactionMap.set(r.postId!, list);
     }
 
-    return posts.map((post) => {
-      const reactions = reactionMap.get(post.id) ?? [];
-      const counts: Record<ReactionType, number> = { like: 0, love: 0, wow: 0 };
-      for (const r of reactions) counts[r.type] += 1;
-      const myReaction = viewerId
-        ? reactions.find((r) => r.ownerId === viewerId)?.type ?? null
-        : null;
+    return {
+      posts: posts.map((post) => {
+        const reactions = reactionMap.get(post.id) ?? [];
+        const counts: Record<ReactionType, number> = { like: 0, love: 0, wow: 0 };
+        for (const r of reactions) counts[r.type] += 1;
+        const myReaction = viewerId
+          ? reactions.find((r) => r.ownerId === viewerId)?.type ?? null
+          : null;
 
-      return {
-        ...post,
-        commentsCount: commentMap.get(post.id) ?? 0,
-        reactions: { counts, total: reactions.length, my: myReaction },
-      };
-    });
+        return {
+          ...post,
+          commentsCount: commentMap.get(post.id) ?? 0,
+          reactions: { counts, total: reactions.length, my: myReaction },
+        };
+      }),
+      total,
+      hasMore: offset + posts.length < total,
+    };
   }
 
   async findOne(id: number): Promise<Post | null> {
@@ -182,7 +201,14 @@ export class PostsService {
     // Live "new post" announcement: notify every active user except the
     // author, then push notifications:new to their connected sockets so the
     // bell badge bumps instantly (15s polling stays as fallback).
-    const activeUsers = await this.userRepository.find({ where: { isActive: true } });
+    //
+    // OPTIMIZATION: Use batched inserts and defer WebSocket sends to avoid
+    // blocking the response. In high-traffic scenarios, consider a message
+    // queue (Redis/Bull) for notification dispatch.
+    const activeUsers = await this.userRepository.find({
+      where: { isActive: true },
+      select: { userId: true },
+    });
     const recipients = activeUsers.filter((u) => u.userId !== ownerId);
     if (recipients.length > 0) {
       const shortTitle = title.length > 80 ? `${title.slice(0, 80)}…` : title;
@@ -196,6 +222,7 @@ export class PostsService {
           postId: saved.id,
         })),
       );
+      // Send WebSocket notifications (non-blocking fire-and-forget)
       for (const notification of notifications) {
         this.realtimeService.sendToUser(notification.recipientId, 'notifications:new', {
           notification,

@@ -249,45 +249,40 @@ export class UsersService implements OnModuleInit {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) return null;
 
-    const postCount = await this.postRepository.count({ where: { ownerId: userId } });
-    const commentCount = await this.commentRepository.count({ where: { ownerId: userId } });
-    const reactionCount = await this.reactionRepository.count({ where: { ownerId: userId } });
+    // Use a single query with subqueries for stats
+    const result = await this.userRepository
+      .createQueryBuilder('u')
+      .select(
+        `(SELECT COUNT(*) FROM posts p WHERE p.ownerId = :userId)`,
+        'postCount',
+      )
+      .addSelect(
+        `(SELECT COUNT(*) FROM comments c WHERE c.ownerId = :userId)`,
+        'commentCount',
+      )
+      .addSelect(
+        `(SELECT COUNT(*) FROM reactions r WHERE r.ownerId = :userId)`,
+        'reactionCount',
+      )
+      .addSelect(
+        `(SELECT COUNT(*) FROM reactions r WHERE r.postId IN (SELECT id FROM posts WHERE ownerId = :userId) OR r.commentId IN (SELECT id FROM comments WHERE ownerId = :userId))`,
+        'receivedReactions',
+      )
+      .where('u.userId = :userId', { userId })
+      .getRawOne();
 
-    const [postIds, commentIds] = await Promise.all([
-      this.postRepository.find({ where: { ownerId: userId }, select: { id: true } }),
-      this.commentRepository.find({ where: { ownerId: userId }, select: { id: true } }),
-    ]);
-    const ownedPostIds = postIds.map((p) => p.id);
-    const ownedCommentIds = commentIds.map((c) => c.id);
-    const receivedReactions =
-      ownedPostIds.length === 0 && ownedCommentIds.length === 0
-        ? 0
-        : await this.reactionRepository
-            .createQueryBuilder('r')
-            .where(
-              ownedPostIds.length > 0 && ownedCommentIds.length > 0
-                ? '(r.postId IN (:...postIds) OR r.commentId IN (:...commentIds))'
-                : ownedPostIds.length > 0
-                  ? 'r.postId IN (:...postIds)'
-                  : 'r.commentId IN (:...commentIds)',
-              {
-                postIds: ownedPostIds,
-                commentIds: ownedCommentIds,
-              },
-            )
-            .getCount();
     const department = user.departmentId
       ? await this.departmentRepository.findOne({ where: { id: user.departmentId } })
       : null;
 
     return {
       ...user,
-      postCount,
-      commentCount,
-      reactionCount,
-      receivedReactions,
-      departmentName: department?.name,
-      departmentColor: department?.color,
+      postCount: Number(result?.postCount ?? 0),
+      commentCount: Number(result?.commentCount ?? 0),
+      reactionCount: Number(result?.reactionCount ?? 0),
+      receivedReactions: Number(result?.receivedReactions ?? 0),
+      departmentName: department?.name ?? null,
+      departmentColor: department?.color ?? null,
     } as User;
   }
 

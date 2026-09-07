@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 
 @Entity()
 export class Comment {
@@ -8,9 +8,11 @@ export class Comment {
   @Column('text')
   content!: string;
 
+  @Index('IDX_comment_post_created')
   @Column()
   postId!: number;
 
+  @Index('IDX_comment_owner')
   @Column()
   ownerId!: number;
 

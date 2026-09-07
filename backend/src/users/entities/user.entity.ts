@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { Role } from '../../auth/roles.enum';
 
 @Entity()
@@ -30,21 +30,25 @@ export class User {
   @Column({ nullable: true })
   avatarUrl?: string;
 
+  @Index('IDX_user_department')
   @Column({ nullable: true })
   departmentId?: number;
 
   @Column({ default: false })
   allDepartmentsAccess!: boolean;
 
+  @Index('IDX_user_active')
   @Column({ default: true })
   isActive!: boolean;
 
   @Column({ default: 0 })
   loginCount!: number;
 
+  @Index('IDX_user_last_login')
   @Column({ type: 'timestamp', nullable: true })
   lastLoginAt?: Date;
 
+  @Index('IDX_user_last_seen')
   @Column({ type: 'timestamp', nullable: true })
   lastSeenAt?: Date;
 

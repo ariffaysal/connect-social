@@ -31,11 +31,15 @@ export class PostsController {
     @Request() req: any,
     @Query('departmentId') departmentId?: string,
     @Query('scope') scope?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
     return this.postsService.findAll(
       {
         departmentId: departmentId ? Number(departmentId) : undefined,
         scope,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
       },
       req.user?.userId,
     );

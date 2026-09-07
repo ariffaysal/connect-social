@@ -40,16 +40,31 @@ export class NotificationsService {
     return this.notificationRepository.save(notifications);
   }
 
-  async forUser(recipientId: number): Promise<Notification[]> {
+  async forUser(recipientId: number, limit = 50): Promise<Notification[]> {
     return this.notificationRepository.find({
       where: { recipientId },
       order: { createdAt: 'DESC' },
-      take: 100,
+      take: limit,
     });
   }
 
   async unreadCount(recipientId: number): Promise<number> {
-    return this.notificationRepository.count({ where: { recipientId, isRead: false } });
+    return this.notificationRepository.count({
+      where: { recipientId, isRead: false },
+    });
+  }
+
+  /** Clean up old read notifications to keep the table lean. */
+  async cleanupOldNotifications(olderThanDays = 30): Promise<number> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - olderThanDays);
+    const result = await this.notificationRepository
+      .createQueryBuilder()
+      .delete()
+      .where('isRead = :isRead', { isRead: true })
+      .andWhere('createdAt < :cutoff', { cutoff: cutoff.toISOString() })
+      .execute();
+    return result.affected ?? 0;
   }
 
   async markRead(id: number, recipientId: number): Promise<boolean> {

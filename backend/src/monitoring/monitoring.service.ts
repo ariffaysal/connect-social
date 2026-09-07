@@ -143,51 +143,56 @@ export class MonitoringService {
   }
 
   async topUsers(limit = 10) {
-    const users = await this.userRepository.find({ where: { isActive: true } });
-    const userIds = users.map((u) => u.userId);
-    if (userIds.length === 0) return [];
+    // SINGLE optimized query using subqueries - avoids N+1 and IN clause bloat
+    // Computes post/comment/reaction counts directly in SQL
+    const topUsersQuery = `
+      SELECT
+        u.userId,
+        u.username,
+        u.fullName,
+        u.avatarUrl,
+        u.departmentId,
+        COALESCE(p.postCount, 0) AS posts,
+        COALESCE(c.commentCount, 0) AS comments,
+        COALESCE(r.reactionCount, 0) AS reactions,
+        (COALESCE(p.postCount, 0) * 3 + COALESCE(c.commentCount, 0) * 2 + COALESCE(r.reactionCount, 0)) AS engagement
+      FROM users u
+      LEFT JOIN (
+        SELECT ownerId, COUNT(*) AS postCount
+        FROM posts
+        GROUP BY ownerId
+      ) p ON u.userId = p.ownerId
+      LEFT JOIN (
+        SELECT ownerId, COUNT(*) AS commentCount
+        FROM comments
+        GROUP BY ownerId
+      ) c ON u.userId = c.ownerId
+      LEFT JOIN (
+        SELECT ownerId, COUNT(*) AS reactionCount
+        FROM reactions
+        GROUP BY ownerId
+      ) r ON u.userId = r.ownerId
+      WHERE u.isActive = true
+      ORDER BY engagement DESC
+      LIMIT :limit
+    `;
 
-    const [posts, comments, reactions] = await Promise.all([
-      this.postRepository
-        .createQueryBuilder('p')
-        .select('p.ownerId', 'ownerId')
-        .addSelect('COUNT(p.id)', 'cnt')
-        .where('p.ownerId IN (:...ids)', { ids: userIds })
-        .groupBy('p.ownerId')
-        .getRawMany(),
-      this.commentRepository
-        .createQueryBuilder('c')
-        .select('c.ownerId', 'ownerId')
-        .addSelect('COUNT(c.id)', 'cnt')
-        .where('c.ownerId IN (:...ids)', { ids: userIds })
-        .groupBy('c.ownerId')
-        .getRawMany(),
-      this.reactionRepository
-        .createQueryBuilder('r')
-        .select('r.ownerId', 'ownerId')
-        .addSelect('COUNT(r.id)', 'cnt')
-        .where('r.ownerId IN (:...ids)', { ids: userIds })
-        .groupBy('r.ownerId')
-        .getRawMany(),
-    ]);
+    const result = await this.userRepository
+      .createQueryBuilder('u')
+      .select(topUsersQuery)
+      .setParameter('limit', limit)
+      .getRawMany();
 
-    const postMap = new Map(posts.map((r: any) => [Number(r.ownerId), Number(r.cnt)]));
-    const commentMap = new Map(comments.map((r: any) => [Number(r.ownerId), Number(r.cnt)]));
-    const reactionMap = new Map(reactions.map((r: any) => [Number(r.ownerId), Number(r.cnt)]));
-
-    return users
-      .map((u) => ({
-        userId: u.userId,
-        username: u.username,
-        fullName: u.fullName,
-        avatarUrl: u.avatarUrl,
-        departmentId: u.departmentId,
-        posts: postMap.get(u.userId) ?? 0,
-        comments: commentMap.get(u.userId) ?? 0,
-        reactions: reactionMap.get(u.userId) ?? 0,
-        engagement: (postMap.get(u.userId) ?? 0) * 3 + (commentMap.get(u.userId) ?? 0) * 2 + (reactionMap.get(u.userId) ?? 0),
-      }))
-      .sort((a, b) => b.engagement - a.engagement)
-      .slice(0, limit);
+    return result.map((row: any) => ({
+      userId: row.userId,
+      username: row.username,
+      fullName: row.fullName,
+      avatarUrl: row.avatarUrl,
+      departmentId: row.departmentId,
+      posts: row.posts,
+      comments: row.comments,
+      reactions: row.reactions,
+      engagement: row.engagement,
+    }));
   }
 }

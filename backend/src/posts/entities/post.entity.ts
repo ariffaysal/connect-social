@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity()
 export class Post {
@@ -14,9 +14,11 @@ export class Post {
   @Column({ nullable: true })
   imageUrl?: string;
 
+  @Index('IDX_post_department_created')
   @Column({ nullable: true })
   departmentId?: number;
 
+  @Index('IDX_post_owner')
   @Column()
   ownerId!: number;
 
