@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import TopNav from '../components/TopNav';
 import Avatar from '../components/Avatar';
@@ -205,6 +206,20 @@ export default function ModerationPage() {
                           )}
                         </>
                       )}
+                      {(() => {
+                        const postId =
+                          report.targetType === 'post'
+                            ? report.target.id
+                            : report.target.post?.id;
+                        return postId ? (
+                          <Link
+                            href={`/feed?post=${postId}`}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
+                          >
+                            View reported {report.targetType} →
+                          </Link>
+                        ) : null;
+                      })()}
                     </div>
                   ) : (
                     <p className="mt-2 text-sm text-slate-400">

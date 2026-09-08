@@ -171,13 +171,21 @@ export default function FeedPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  // Deep link from the moderation queue (/feed?post=<id>): scroll to the post
+  // and auto-open its comments so a reported comment is immediately visible.
   useEffect(() => {
     if (!router.query.post || posts.length === 0) return;
-    const id = `post-${router.query.post}`;
+    const postId = Number(router.query.post);
+    if (!postId || !posts.some((p) => p.id === postId)) return;
+    const id = `post-${postId}`;
     const timer = setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       document.getElementById(id)?.classList.add('ring-2', 'ring-indigo-400');
     }, 300);
+    if (!expanded[postId]) {
+      setExpanded((prev) => ({ ...prev, [postId]: true }));
+      loadComments(postId).catch(() => {});
+    }
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, router.query.post]);
