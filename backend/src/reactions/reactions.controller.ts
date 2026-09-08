@@ -5,6 +5,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,23 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 export class ReactionsController {
   constructor(private readonly reactionsService: ReactionsService) {}
+
+  @Get('users/:userId/reactions')
+  async getUserReactions(
+    @Request() req: any,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.reactionsService.findByOwner(
+      userId,
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+      },
+      req.user?.userId,
+    );
+  }
 
   @Post('posts/:id/react')
   reactToPost(

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Request,
   UseGuards,
   ForbiddenException,
@@ -25,6 +26,24 @@ export class CommentsController {
     private readonly commentsService: CommentsService,
     private readonly postsService: PostsService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get('users/:userId/comments')
+  async getUserComments(
+    @Request() req: any,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.commentsService.findByOwner(
+      userId,
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+      },
+      req.user?.userId,
+    );
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('posts/:postId/comments')
