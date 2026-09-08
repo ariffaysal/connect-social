@@ -22,12 +22,24 @@ type FeedPost = {
   reactions: ReactionSummary;
 };
 
+type PostsResponse = {
+  posts: FeedPost[];
+  total: number;
+  hasMore: boolean;
+};
+
+const PROFILE_POST_PAGE_SIZE = 30;
+
 export default function PublicProfilePage() {
   const router = useRouter();
   const { id } = router.query;
   const { profile: me } = useProfile();
   const [target, setTarget] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [postsOffset, setPostsOffset] = useState(0);
+  const [postsHasMore, setPostsHasMore] = useState(false);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsLoadingMore, setPostsLoadingMore] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -35,14 +47,65 @@ export default function PublicProfilePage() {
     const userId = Number(id);
     if (!Number.isFinite(userId)) return;
 
+    let cancelled = false;
+    setPosts([]);
+    setPostsOffset(0);
+    setPostsHasMore(false);
+    setPostsLoading(true);
+
     apiFetch<Profile>(`/users/${userId}`)
-      .then(setTarget)
+      .then((profile) => {
+        if (!cancelled) setTarget(profile);
+      })
       .catch((err) => setError(err.message));
 
-    apiFetch<FeedPost[]>(`/posts`).then((all) =>
-      setPosts(all.filter((p) => p.ownerId === userId)),
-    ).catch(() => {});
+    apiFetch<PostsResponse>(
+      `/posts?limit=${PROFILE_POST_PAGE_SIZE}&offset=0`,
+    )
+      .then((response) => {
+        if (cancelled) return;
+        setPosts(response.posts.filter((p) => p.ownerId === userId));
+        setPostsOffset(response.posts.length);
+        setPostsHasMore(response.hasMore);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPostsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
+
+  const handleLoadMore = async () => {
+    const userId = Number(id);
+    if (
+      !Number.isFinite(userId) ||
+      postsLoading ||
+      postsLoadingMore ||
+      !postsHasMore
+    ) {
+      return;
+    }
+
+    setPostsLoadingMore(true);
+    try {
+      const response = await apiFetch<PostsResponse>(
+        `/posts?limit=${PROFILE_POST_PAGE_SIZE}&offset=${postsOffset}`,
+      );
+      setPosts((previous) => [
+        ...previous,
+        ...response.posts.filter((p) => p.ownerId === userId),
+      ]);
+      setPostsOffset((previous) => previous + response.posts.length);
+      setPostsHasMore(response.hasMore);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setPostsLoadingMore(false);
+    }
+  };
 
   const handleReactPost = async (postId: number, type: 'like' | 'love' | 'wow') => {
     try {
@@ -50,8 +113,14 @@ export default function PublicProfilePage() {
         method: 'POST',
         body: JSON.stringify({ type }),
       });
-      const refreshed = await apiFetch<FeedPost[]>('/posts');
-      setPosts(refreshed.filter((p) => p.ownerId === Number(id)));
+      const refreshed = await apiFetch<ReactionSummary>(
+        `/posts/${postId}/reactions`,
+      );
+      setPosts((previous) =>
+        previous.map((post) =>
+          post.id === postId ? { ...post, reactions: refreshed } : post,
+        ),
+      );
     } catch (err: any) {
       setError(err.message);
     }
@@ -101,7 +170,12 @@ export default function PublicProfilePage() {
               Posts by {target.fullName || target.username}
             </h2>
             <div className="space-y-4">
-              {posts.length === 0 && (
+              {postsLoading && (
+                <p className="rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+                  Loading posts…
+                </p>
+              )}
+              {!postsLoading && posts.length === 0 && (
                 <p className="rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
                   No posts yet.
                 </p>
@@ -158,6 +232,16 @@ export default function PublicProfilePage() {
                   </div>
                 </article>
               ))}
+              {!postsLoading && postsHasMore && (
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={postsLoadingMore}
+                  className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-medium text-indigo-600 shadow-sm transition hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {postsLoadingMore ? 'Loading more posts…' : 'Load more posts'}
+                </button>
+              )}
             </div>
           </>
         )}
