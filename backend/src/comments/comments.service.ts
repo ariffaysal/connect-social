@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Comment } from './entities/comment.entity';
+import { User } from '../users/entities/user.entity';
 import { Reaction, ReactionType } from '../reactions/entities/reaction.entity';
 import { PostsService } from '../posts/posts.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -14,6 +15,8 @@ export class CommentsService {
   constructor(
     @InjectRepository(Comment)
     private readonly commentRepository: Repository<Comment>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     @InjectRepository(Reaction)
     private readonly reactionRepository: Repository<Reaction>,
     private readonly postsService: PostsService,
@@ -28,6 +31,14 @@ export class CommentsService {
     });
 
     if (comments.length === 0) return [];
+
+    // Owners' avatars so the UI can show profile pictures next to comments.
+    const ownerIds = [...new Set(comments.map((c) => c.ownerId))];
+    const owners = await this.userRepository.find({
+      where: { userId: In(ownerIds) },
+      select: { userId: true, avatarUrl: true },
+    });
+    const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
 
     const commentIds = comments.map((c) => c.id);
     const reactions = await this.reactionRepository.find({
@@ -51,6 +62,7 @@ export class CommentsService {
 
       return {
         ...comment,
+        ownerAvatarUrl: avatarMap.get(comment.ownerId) ?? null,
         reactions: { counts, total: commentReactions.length, my: myReaction },
       };
     });

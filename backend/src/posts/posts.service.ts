@@ -108,6 +108,14 @@ export class PostsService {
 
     const postIds = posts.map((p) => p.id);
 
+    // Owners' avatars so the feed can show profile pictures on post cards.
+    const ownerIds = [...new Set(posts.map((p) => p.ownerId))];
+    const owners = await this.userRepository.find({
+      where: { userId: In(ownerIds) },
+      select: { userId: true, avatarUrl: true },
+    });
+    const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
+
     const [commentRows, reactionRows] = await Promise.all([
       this.commentRepository
         .createQueryBuilder('c')
@@ -141,6 +149,7 @@ export class PostsService {
 
         return {
           ...post,
+          ownerAvatarUrl: avatarMap.get(post.ownerId) ?? null,
           commentsCount: commentMap.get(post.id) ?? 0,
           reactions: { counts, total: reactions.length, my: myReaction },
         };

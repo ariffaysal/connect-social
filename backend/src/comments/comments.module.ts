@@ -6,12 +6,13 @@ import { AuthModule } from '../auth/auth.module';
 import { PostsModule } from '../posts/posts.module';
 import { Comment } from './entities/comment.entity';
 import { Reaction } from '../reactions/entities/reaction.entity';
+import { User } from '../users/entities/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Comment, Reaction]),
+    TypeOrmModule.forFeature([Comment, Reaction, User]),
     AuthModule,
     PostsModule,
     NotificationsModule,
