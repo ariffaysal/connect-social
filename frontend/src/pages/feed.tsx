@@ -518,97 +518,144 @@ export default function FeedPage() {
               />
             )}
             {profile && canPost(profile.role) && (
-              <div className="rounded-2xl bg-white p-4 shadow-sm">
-                <div className="flex items-start gap-3">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDropActive(true);
+                }}
+                onDragLeave={() => setDropActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDropActive(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleImageFile(file);
+                }}
+                className={`rounded-2xl border bg-white shadow-sm transition ${
+                  dropActive ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
                   <Avatar
                     name={profile.fullName || profile.username}
                     avatarUrl={profile.avatarUrl}
                   />
-                  <form onSubmit={handlePublish} className="flex-1 space-y-3">
-                    <textarea
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      placeholder="What's on your mind?"
-                      rows={2}
-                      className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {profile.fullName || profile.username}
+                    </p>
+                    <p className="text-xs text-slate-500">Share an update with your team</p>
+                  </div>
+                </div>
+                <form onSubmit={handlePublish} className="space-y-4 px-5 py-4">
+                  <div>
+                    <label
+                      htmlFor="new-post-title"
+                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                      Title <span className="text-rose-500">*</span>
+                    </label>
                     <input
+                      id="new-post-title"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Post title (required)"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      placeholder="Give your update a clear headline"
+                      maxLength={200}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                     />
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      {imageUrl ? (
-                        <div className="flex flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <img
-                            src={imageUrl}
-                            alt="Attachment preview"
-                            className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-                            Image attached
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="new-post-content"
+                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                      Content <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      id="new-post-content"
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      placeholder="What's on your mind? Add the details here…"
+                      rows={4}
+                      maxLength={2000}
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+
+                  {imageUrl && (
+                    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+                      <img
+                        src={imageUrl}
+                        alt="Attachment preview"
+                        className="max-h-72 w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setImageUrl('')}
+                        disabled={uploading}
+                        className="absolute right-2 top-2 rounded-full bg-slate-900/75 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-50"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        title="PNG, JPG, GIF or WebP · up to 5 MB"
+                        className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${
+                          uploading
+                            ? 'border-slate-200 bg-slate-50 text-slate-400'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700'
+                        }`}
+                      >
+                        {uploading ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
+                            Uploading…
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setImageUrl('')}
-                            disabled={uploading}
-                            className="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-300 disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <label
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setDropActive(true);
-                          }}
-                          onDragLeave={() => setDropActive(false)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDropActive(false);
-                            const file = e.dataTransfer.files?.[0];
+                        ) : (
+                          <>
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={1.8}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"
+                              />
+                            </svg>
+                            Add photo
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/gif,image/webp"
+                          className="hidden"
+                          disabled={uploading}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
                             if (file) handleImageFile(file);
+                            e.target.value = '';
                           }}
-                          className={`flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-3 text-center text-xs transition ${
-                            dropActive
-                              ? 'border-indigo-400 bg-indigo-50 text-indigo-600'
-                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50/50'
-                          }`}
-                        >
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/gif,image/webp"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleImageFile(file);
-                              e.target.value = '';
-                            }}
-                          />
-                          {uploading ? (
-                            <span className="font-medium text-indigo-600">
-                              Uploading…
-                            </span>
-                          ) : (
-                            <>
-                              <span className="text-lg leading-none">📷</span>
-                              <span className="font-medium">
-                                Drag & drop an image or click to upload
-                              </span>
-                              <span>PNG, JPG, GIF or WebP · up to 5 MB</span>
-                            </>
-                          )}
-                        </label>
-                      )}
+                        />
+                      </label>
                       <select
                         value={deptId}
                         onChange={(e) =>
                           setDeptId(e.target.value === '' ? '' : Number(e.target.value))
                         }
                         title="Who can see this post"
-                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
                       >
                         <option value="">🌐 All Company</option>
                         {departments.map((d) => (
@@ -617,21 +664,28 @@ export default function FeedPage() {
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="submit"
-                        disabled={
-                          publishing || uploading || !title.trim() || !content.trim()
-                        }
-                        className="rounded-xl bg-indigo-600 px-6 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {publishing ? 'Posting…' : 'Post'}
-                      </button>
                     </div>
-                    {uploadMsg && (
-                      <p className="text-xs font-medium text-rose-600">{uploadMsg}</p>
-                    )}
-                  </form>
-                </div>
+                    <button
+                      type="submit"
+                      disabled={
+                        publishing || uploading || !title.trim() || !content.trim()
+                      }
+                      className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {publishing ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          Posting…
+                        </span>
+                      ) : (
+                        'Post'
+                      )}
+                    </button>
+                  </div>
+                  {uploadMsg && (
+                    <p className="text-xs font-medium text-rose-600">{uploadMsg}</p>
+                  )}
+                </form>
               </div>
             )}
 
