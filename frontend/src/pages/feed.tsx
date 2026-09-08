@@ -38,6 +38,12 @@ type FeedPost = {
   comments?: FeedComment[];
 };
 
+type PostsResponse = {
+  posts: FeedPost[];
+  total: number;
+  hasMore: boolean;
+};
+
 type TopUser = {
   userId: number;
   username: string;
@@ -112,8 +118,12 @@ export default function FeedPage() {
     return `/posts?${params.toString()}`;
   };
 
-  const loadPosts = useCallback(async (next: number | 'all' | 'company', resetOffset = true) => {
-    const currentOffset = resetOffset ? 0 : offset;
+  const loadPosts = useCallback(async (
+    next: number | 'all' | 'company',
+    resetOffset = true,
+    requestedOffset = 0,
+  ) => {
+    const currentOffset = resetOffset ? 0 : requestedOffset;
     if (resetOffset) {
       setLoadingPosts(true);
       setOffset(0);
@@ -121,7 +131,7 @@ export default function FeedPage() {
       setLoadingMore(true);
     }
     try {
-      const data = await apiFetch<FeedPost[]>(buildPostsUrl(next, currentOffset));
+      const data = await apiFetch<PostsResponse | FeedPost[]>(buildPostsUrl(next, currentOffset));
       // Data from API is now { posts, total, hasMore } but we need to handle both
       // old array response and new paginated response for backwards compatibility
       const postsData = Array.isArray(data) ? data : (data as any).posts || data;
@@ -129,6 +139,7 @@ export default function FeedPage() {
       
       if (resetOffset) {
         setPosts(postsData);
+        setOffset(postsData.length);
         setHasMore(hasMoreData);
       } else {
         setPosts((prev) => [...prev, ...postsData]);
@@ -198,8 +209,8 @@ export default function FeedPage() {
   // Load more posts when scrolling near bottom
   const loadMorePosts = useCallback(async () => {
     if (!hasMore || loadingMore || loadingPosts) return;
-    await loadPosts(filter, false);
-  }, [filter, hasMore, loadingMore, loadingPosts]);
+    await loadPosts(filter, false, offset);
+  }, [filter, hasMore, loadingMore, loadingPosts, offset, loadPosts]);
 
   const loadComments = async (postId: number) => {
     const comments = await apiFetch<FeedComment[]>(`/posts/${postId}/comments`);
@@ -259,9 +270,14 @@ export default function FeedPage() {
         method: 'POST',
         body: JSON.stringify({ type }),
       });
-      const refreshed = await apiFetch<any>(buildPostsUrl(filter));
-      const postsData = Array.isArray(refreshed) ? refreshed : (refreshed as any).posts || refreshed;
-      setPosts(postsData);
+      const refreshed = await apiFetch<ReactionSummary>(
+        `/posts/${postId}/reactions`,
+      );
+      setPosts((previous) =>
+        previous.map((post) =>
+          post.id === postId ? { ...post, reactions: refreshed } : post,
+        ),
+      );
     } catch (err: any) {
       setError(err.message);
     }
@@ -781,6 +797,8 @@ export default function FeedPage() {
                       <img
                         src={post.imageUrl}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                         className="mt-3 max-h-96 w-full rounded-2xl border border-slate-100 object-cover"
                         onError={(e) => {

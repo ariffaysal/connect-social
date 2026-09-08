@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 
 export enum ReportTargetType {
   Post = 'post',
@@ -12,6 +12,7 @@ export enum ReportStatus {
 }
 
 @Entity()
+@Index('IDX_report_status_created_at', ['status', 'createdAt'])
 export class Report {
   @PrimaryGeneratedColumn()
   id!: number;

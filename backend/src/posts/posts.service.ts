@@ -1,6 +1,7 @@
 import {
   Injectable,
   ForbiddenException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +19,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
 export class PostsService {
+  private readonly logger = new Logger(PostsService.name);
+
   constructor(
     @InjectRepository(Post)
     private readonly postRepository: Repository<Post>,
@@ -250,6 +253,23 @@ export class PostsService {
       detail: `Created post "${title}"`,
     });
 
+    // Notification fan-out can touch every active account. Do it after the
+    // post is committed so publishing stays fast; the WebSocket path remains
+    // best-effort and the database notifications provide the fallback.
+    void this.notifyUsersOfNewPost(saved, ownerId, ownerUsername, title).catch((err) => {
+      this.logger.error(`Post notification fan-out failed: ${err?.message ?? err}`);
+    });
+
+    return saved;
+  }
+
+  private async notifyUsersOfNewPost(
+    post: Post,
+    ownerId: number,
+    ownerUsername: string,
+    title: string,
+  ): Promise<void> {
+
     // Live "new post" announcement: notify every active user except the
     // author, then push notifications:new to their connected sockets so the
     // bell badge bumps instantly (15s polling stays as fallback).
@@ -271,7 +291,7 @@ export class PostsService {
           actorUsername: ownerUsername,
           type: NotificationType.System,
           content: `“${shortTitle}”`,
-          postId: saved.id,
+          postId: post.id,
         })),
       );
       // Send WebSocket notifications (non-blocking fire-and-forget)
@@ -281,8 +301,6 @@ export class PostsService {
         });
       }
     }
-
-    return saved;
   }
 
   async update(id: number, partial: Partial<Post>): Promise<Post | null> {

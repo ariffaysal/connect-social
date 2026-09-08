@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import helmet from 'helmet';
+import compression from 'compression';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -16,6 +17,7 @@ const logger = new Logger('Bootstrap');
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.use(compression());
 
   // Security headers for the API. CSP is handled by the frontend's
   // next.config.js, since this server only serves JSON and static uploads.
@@ -30,7 +32,12 @@ async function bootstrap() {
   );
 
   const uploadsDir = resolveUploadDir();
-  app.use('/uploads', express.static(uploadsDir));
+  // Upload filenames are UUID/timestamp based and immutable after creation.
+  // Long-lived caching avoids repeatedly transferring large images.
+  app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '365d',
+    immutable: true,
+  }));
 
   // Allow the frontend origin(s). Comma-separate multiple origins, or set `*`
   // to allow all. Defaults to the local Next.js dev server.

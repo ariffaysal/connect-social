@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Report, ReportStatus, ReportTargetType } from './entities/report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
+import { Post } from '../posts/entities/post.entity';
+import { Comment } from '../comments/entities/comment.entity';
 import { PostsService } from '../posts/posts.service';
 import { CommentsService } from '../comments/comments.service';
 
@@ -11,6 +13,10 @@ export class ReportsService {
   constructor(
     @InjectRepository(Report)
     private readonly reportRepository: Repository<Report>,
+    @InjectRepository(Post)
+    private readonly postRepository: Repository<Post>,
+    @InjectRepository(Comment)
+    private readonly commentRepository: Repository<Comment>,
     private readonly postsService: PostsService,
     private readonly commentsService: CommentsService,
   ) {}
@@ -68,19 +74,37 @@ export class ReportsService {
   }
 
   async enrich(reports: Report[]): Promise<any[]> {
-    return Promise.all(
-      reports.map(async (report) => {
-        let target: any = null;
-        if (report.targetType === ReportTargetType.Post) {
-          target = await this.postsService.findOne(report.targetId);
-        } else {
-          const comment = await this.commentsService.findOne(report.targetId);
-          if (comment) {
-            target = { ...comment, post: await this.postsService.findOne(comment.postId) };
-          }
-        }
-        return { ...report, target };
-      }),
-    );
+    if (reports.length === 0) return [];
+
+    const postIds = reports
+      .filter((report) => report.targetType === ReportTargetType.Post)
+      .map((report) => report.targetId);
+    const commentIds = reports
+      .filter((report) => report.targetType === ReportTargetType.Comment)
+      .map((report) => report.targetId);
+    const [posts, comments] = await Promise.all([
+      postIds.length > 0 ? this.postRepository.find({ where: { id: In(postIds) } }) : [],
+      commentIds.length > 0 ? this.commentRepository.find({ where: { id: In(commentIds) } }) : [],
+    ]);
+    const commentPostIds = comments.map((comment) => comment.postId);
+    const commentPosts = commentPostIds.length > 0
+      ? await this.postRepository.find({ where: { id: In(commentPostIds) } })
+      : [];
+    const postMap = new Map([...posts, ...commentPosts].map((post) => [post.id, post]));
+    const commentMap = new Map(comments.map((comment) => [comment.id, comment]));
+
+    return reports.map((report) => {
+      if (report.targetType === ReportTargetType.Post) {
+        return { ...report, target: postMap.get(report.targetId) ?? null };
+      }
+
+      const comment = commentMap.get(report.targetId);
+      return {
+        ...report,
+        target: comment
+          ? { ...comment, post: postMap.get(comment.postId) ?? null }
+          : null,
+      };
+    });
   }
 }

@@ -55,7 +55,9 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
       }
     };
     load();
-    const interval = setInterval(load, 15000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 30000);
     return () => clearInterval(interval);
   }, [profile]);
 

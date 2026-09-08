@@ -411,6 +411,8 @@ export default function PublicProfilePage() {
                         <img
                           src={post.imageUrl}
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                           className="mt-3 max-h-72 w-full rounded-xl border border-slate-100 object-cover"
                           onError={(e) => {

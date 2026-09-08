@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
 import { Report } from './entities/report.entity';
+import { Post } from '../posts/entities/post.entity';
+import { Comment } from '../comments/entities/comment.entity';
 import { AuthModule } from '../auth/auth.module';
 import { PostsModule } from '../posts/posts.module';
 import { CommentsModule } from '../comments/comments.module';
@@ -11,7 +13,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Report]),
+    TypeOrmModule.forFeature([Report, Post, Comment]),
     AuthModule,
     PostsModule,
     CommentsModule,

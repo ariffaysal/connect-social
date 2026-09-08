@@ -23,6 +23,8 @@ export default function Avatar({
       <img
         src={avatarUrl}
         alt={name || 'avatar'}
+        loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         className={`${sizes[size]} shrink-0 rounded-full object-cover`}
       />

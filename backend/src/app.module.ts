@@ -45,9 +45,15 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     TypeOrmModule.forRoot({
       ...resolveDbConfig(),
       entities: [User, Post, Comment, Department, Reaction, Notification, Report, ActivityLog],
+      migrations: [__dirname + '/database/migrations/*{.js,.ts}'],
+      migrationsRun: process.env.DB_MIGRATIONS_RUN === 'true',
       // Auto-creates tables while developing. Disable (`false`) in production
       // and use migrations instead.
-      synchronize: process.env.DB_SYNCHRONIZE !== 'false',
+      // Never let a production boot mutate the schema automatically. Apply
+      // migrations/index changes explicitly before deploying.
+      synchronize:
+        process.env.NODE_ENV !== 'production' &&
+        process.env.DB_SYNCHRONIZE !== 'false',
       // Test-only: wipe and recreate the schema on boot for clean isolation
       // (defaults to off outside the jest suite).
       dropSchema: process.env.DB_DROP_SCHEMA === 'true',

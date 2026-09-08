@@ -24,6 +24,12 @@ export class UsersService implements OnModuleInit {
     private readonly reactionRepository: Repository<Reaction>,
   ) {}
 
+  private withoutPassword(user: User | null): User | null {
+    if (!user) return null;
+    const { password: _password, ...safeUser } = user;
+    return safeUser as User;
+  }
+
   async onModuleInit() {
     const defaultUsers = [
       {
@@ -211,7 +217,29 @@ export class UsersService implements OnModuleInit {
   }
 
   async findAll(): Promise<User[]> {
-    const users = await this.userRepository.find({ order: { createdAt: 'ASC' } });
+    const users = await this.userRepository.find({
+      order: { createdAt: 'ASC' },
+      // Admin screens never need password hashes; excluding them reduces the
+      // payload and avoids ever returning credential material over the API.
+      select: {
+        userId: true,
+        username: true,
+        role: true,
+        fullName: true,
+        email: true,
+        jobTitle: true,
+        bio: true,
+        avatarUrl: true,
+        departmentId: true,
+        allDepartmentsAccess: true,
+        isActive: true,
+        loginCount: true,
+        lastLoginAt: true,
+        lastSeenAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
     return this.attachStats(users);
   }
 
@@ -251,21 +279,24 @@ export class UsersService implements OnModuleInit {
       data.password = await hashPassword(data.password);
     }
     await this.userRepository.update(userId, data);
-    return this.findById(userId);
+    return this.withoutPassword(await this.findById(userId));
   }
 
   async getUserProfile(userId: number): Promise<User | null> {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) return null;
 
-    const postCount = await this.postRepository.count({ where: { ownerId: userId } });
-    const commentCount = await this.commentRepository.count({ where: { ownerId: userId } });
-    const reactionCount = await this.reactionRepository.count({ where: { ownerId: userId } });
-
-    const [postIds, commentIds] = await Promise.all([
-      this.postRepository.find({ where: { ownerId: userId }, select: { id: true } }),
-      this.commentRepository.find({ where: { ownerId: userId }, select: { id: true } }),
-    ]);
+    const [postCount, commentCount, reactionCount, postIds, commentIds, department] =
+      await Promise.all([
+        this.postRepository.count({ where: { ownerId: userId } }),
+        this.commentRepository.count({ where: { ownerId: userId } }),
+        this.reactionRepository.count({ where: { ownerId: userId } }),
+        this.postRepository.find({ where: { ownerId: userId }, select: { id: true } }),
+        this.commentRepository.find({ where: { ownerId: userId }, select: { id: true } }),
+        user.departmentId
+          ? this.departmentRepository.findOne({ where: { id: user.departmentId } })
+          : Promise.resolve(null),
+      ]);
     const ownedPostIds = postIds.map((p) => p.id);
     const ownedCommentIds = commentIds.map((c) => c.id);
     const receivedReactions =
@@ -285,12 +316,9 @@ export class UsersService implements OnModuleInit {
               },
             )
             .getCount();
-    const department = user.departmentId
-      ? await this.departmentRepository.findOne({ where: { id: user.departmentId } })
-      : null;
-
+    const safeUser = this.withoutPassword(user)!;
     return {
-      ...user,
+      ...safeUser,
       postCount,
       commentCount,
       reactionCount,

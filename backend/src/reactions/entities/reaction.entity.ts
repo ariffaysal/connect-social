@@ -9,6 +9,7 @@ export enum ReactionType {
 @Entity()
 @Unique(['ownerId', 'postId'])
 @Unique(['ownerId', 'commentId'])
+@Index('IDX_reaction_owner_created_at', ['ownerId', 'createdAt'])
 export class Reaction {
   @PrimaryGeneratedColumn()
   id!: number;

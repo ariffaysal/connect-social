@@ -144,7 +144,16 @@ export class MonitoringService {
 
   async topUsers(limit = 10) {
     // Get all active users first
-    const users = await this.userRepository.find({ where: { isActive: true } });
+    const users = await this.userRepository.find({
+      where: { isActive: true },
+      select: {
+        userId: true,
+        username: true,
+        fullName: true,
+        avatarUrl: true,
+        departmentId: true,
+      },
+    });
     const userIds = users.map((u) => u.userId);
     if (userIds.length === 0) return [];
 

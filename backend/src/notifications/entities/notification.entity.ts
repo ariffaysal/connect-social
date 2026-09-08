@@ -8,6 +8,7 @@ export enum NotificationType {
 }
 
 @Entity()
+@Index('IDX_notification_recipient_read_created_at', ['recipientId', 'isRead', 'createdAt'])
 export class Notification {
   @PrimaryGeneratedColumn()
   id!: number;

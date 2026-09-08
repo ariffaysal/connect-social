@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 
 @Entity()
+@Index('IDX_comment_owner_created_at', ['ownerId', 'createdAt'])
 export class Comment {
   @PrimaryGeneratedColumn()
   id!: number;

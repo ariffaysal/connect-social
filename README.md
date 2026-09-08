@@ -227,6 +227,7 @@ DB_USERNAME=your-db-user
 DB_PASSWORD=your-db-password
 DB_NAME=connect_social
 DB_SYNCHRONIZE=false                            # use migrations in production
+DB_MIGRATIONS_RUN=true                          # apply checked-in migrations at startup
 JWT_SECRET=<long-random-value>                  # openssl rand -base64 48
 ```
 

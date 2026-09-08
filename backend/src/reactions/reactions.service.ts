@@ -182,7 +182,7 @@ export class ReactionsService {
       if (viewer?.departmentId) {
         query.andWhere(
           `((reaction.postId IS NOT NULL AND (post.departmentId IS NULL OR post.departmentId = :departmentId))
-            OR (reaction.commentId IS NOT NULL AND (commentPost.departmentId IS NULL OR commentPost.departmentId = :departmentId))`,
+            OR (reaction.commentId IS NOT NULL AND (commentPost.departmentId IS NULL OR commentPost.departmentId = :departmentId)))`,
           { departmentId: viewer.departmentId },
         );
       } else {
