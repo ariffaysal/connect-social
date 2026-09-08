@@ -12,11 +12,9 @@
 
 ---
 
-## 🖥️ Live demo
+## 🖥️ Self-hosted
 
-A public instance of the app is running at **[https://connect-social-five.vercel.app](https://connect-social-five.vercel.app)** — open it to see the UI in action.
-
-> 💡 This is a self-hostable project: you can also run it on your own machines (or free hosting tiers) in ~5 minutes — see [Getting Started](#-getting-started).
+ConnectSocial is designed to run on your own machines — see [Getting Started](#-getting-started) to run it locally in ~5 minutes.
 
 ---
 
@@ -60,7 +58,7 @@ ConnectSocial replaces public group chats and email threads with a dedicated, **
 ```
 ┌──────────────────────┐      HTTPS (REST JSON)       ┌───────────────────────────┐
 │  Browser / Next.js   │ ───────────────────────────► │   NestJS backend (3001)   │
-│  (Vercel or local)   │ ◄─────────────────────────── │   auth · posts · comments │
+│       (local)        │ ◄─────────────────────────── │   auth · posts · comments │
 └──────────────────────┘                              │   reactions · reports     │
          │                                            │   notifications · monitor │
          └────────── WebSocket /ws?token=<JWT> ──────►│   uploads · users         │
@@ -197,20 +195,32 @@ Base URL: `http://localhost:3001` — every request (except login) requires `Aut
 
 ## ☁️ Deployment
 
-### Frontend → Vercel (free tier)
+### Local build & run (production mode)
 
-1. Push this repository to GitHub.
-2. In Vercel, **Add New Project** → import the repo → set **Root Directory** to `frontend`.
-3. Add the environment variable `NEXT_PUBLIC_API_URL` pointing at your hosted backend.
-4. Deploy. (That's how the [live demo](https://connect-social-five.vercel.app) is hosted.)
+Build the backend, then start it:
 
-### Backend → Railway / Render / any Node host
+```bash
+cd backend
+npm install
+npm run build
+npm start
+```
 
-The API needs a Node.js runtime and a reachable MySQL database. Railway and Render offer free starter tiers with managed MySQL add-ons.
+The frontend is a static Next.js export you can serve from any web server:
+
+```bash
+cd frontend
+NEXT_PUBLIC_API_URL=http://localhost:3001 npm run build
+npx serve out
+```
+
+### Self-hosting on a server
+
+The API needs a Node.js runtime and a reachable MySQL database. Set these environment variables (or edit `backend/.env`):
 
 ```bash
 PORT=3001
-CORS_ORIGIN=https://your-frontend.vercel.app   # comma-separate multiple origins, or * to allow all
+CORS_ORIGIN=http://localhost:3000,http://localhost:3001   # or * to allow all
 DB_HOST=your-mysql-host
 DB_PORT=3306
 DB_USERNAME=your-db-user
@@ -220,16 +230,9 @@ DB_SYNCHRONIZE=false                            # use migrations in production
 JWT_SECRET=<long-random-value>                  # openssl rand -base64 48
 ```
 
-Then build and start:
+> 📦 Uploaded images are stored in an `uploads/` directory next to the backend process — make sure that directory is **persistent** on your host (a mounted volume, or a disk on a VPS).
 
-```bash
-cd backend
-npm install
-npm run build
-npm start
-```
-
-> 📦 Uploaded images are stored in an `uploads/` directory next to the backend process — make sure that directory is **persistent** on your host (a mounted volume on Railway/Render, or a disk on a VPS).
+> 🔌 The WebSocket endpoint (`/ws`) requires a long-running server process — use a persistent Node host (Railway, Render, VPS), not a serverless platform.
 
 ---
 
@@ -262,22 +265,3 @@ Released under the [MIT License](LICENSE).
 ---
 
 Built with ❤️ by [ariffaysal](https://github.com/ariffaysal).
-
----
-
-## Current Deployment
-
-- **Frontend:** https://connect-social-five.vercel.app
-- **Backend:** https://connect-social-api.vercel.app  
-- **Database:** Neon PostgreSQL
-
-### Environment Variables
-
-#### Frontend (Vercel)
-- `NEXT_PUBLIC_API_URL` = `https://connect-social-api.vercel.app`
-
-#### Backend (Vercel)
-- `DATABASE_URL` = PostgreSQL connection string
-- `JWT_SECRET` = `tMJtOZPGylKrhwd/1ovALtXwp8KCXjDUGFskEXHs3EtUzw5t3T8Viexf1TNt6Cmy`
-- `CORS_ORIGIN` = `https://connect-social-five.vercel.app,http://localhost:3000,http://localhost:3001`
-- `DB_SYNCHRONIZE` = `true`

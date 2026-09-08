@@ -3,7 +3,7 @@ node_modules
 dist
 .next
 # Runtime image uploads (backend/uploads). NOT backend/src/uploads, which is
-# a source module that must stay tracked (builds on Vercel fail without it).
+# a source module that must stay tracked.
 backend/uploads
 .env
 .env.local
@@ -17,9 +17,6 @@ pnpm-debug.log*
 
 # Freebuff tooling
 .freebuff/
-
-# Vercel
-.vercel/
 
 # video production artifacts
 .video/

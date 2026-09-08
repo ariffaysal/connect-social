@@ -25,23 +25,7 @@ import { Report } from './reports/entities/report.entity';
 import { ActivityLog } from './monitoring/entities/activity-log.entity';
 
 function resolveDbConfig(): TypeOrmModuleOptions {
-  // Local dev defaults to MySQL via DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/
-  // DB_NAME. When DATABASE_URL points at PostgreSQL (e.g. Neon on Vercel) the
-  // pg driver is used instead — the entities are written to work on both.
-  if (process.env.DATABASE_URL?.startsWith('postgres')) {
-    return {
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      // Neon (and most hosted Postgres) require TLS. Set DB_SSL=false to
-      // disable, e.g. for a local Postgres without certificates.
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-      // Connection pooling for serverless environments
-      extra: {
-        max: 10,
-        idleTimeoutMillis: 30000,
-      },
-    };
-  }
+  // Local / self-hosted MySQL via DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_NAME.
   return {
     type: 'mysql',
     host: process.env.DB_HOST || '127.0.0.1',
@@ -49,7 +33,6 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     username: process.env.DB_USERNAME || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'connect_social',
-    // Connection pooling for serverless environments
     extra: {
       connectionLimit: 10,
       idleTimeout: 30000,
@@ -73,6 +56,7 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     }),
     // Loose global default; stricter limits are applied per route
     // (login, report creation) with the @Throttle decorator.
+    TypeOrmModule.forFeature([User]),
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
     }),
