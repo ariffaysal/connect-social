@@ -44,6 +44,58 @@ export class PostsService {
         user.allDepartmentsAccess === true);
   }
 
+  private async addPostDetails(posts: Post[], viewerId?: number): Promise<any[]> {
+    if (posts.length === 0) return [];
+
+    const postIds = posts.map((p) => p.id);
+
+    // Owners' avatars so the feed can show profile pictures on post cards.
+    const ownerIds = [...new Set(posts.map((p) => p.ownerId))];
+    const owners = await this.userRepository.find({
+      where: { userId: In(ownerIds) },
+      select: { userId: true, avatarUrl: true },
+    });
+    const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
+
+    const [commentRows, reactionRows] = await Promise.all([
+      this.commentRepository
+        .createQueryBuilder('c')
+        .select('c.postId', 'postId')
+        .addSelect('COUNT(c.id)', 'cnt')
+        .where('c.postId IN (:...ids)', { ids: postIds })
+        .groupBy('c.postId')
+        .getRawMany(),
+      this.reactionRepository.find({
+        where: { postId: In(postIds) },
+      }),
+    ]);
+
+    const commentMap = new Map(commentRows.map((r: any) => [Number(r.postId), Number(r.cnt)]));
+
+    const reactionMap = new Map<number, Reaction[]>();
+    for (const r of reactionRows) {
+      const list = reactionMap.get(r.postId!) ?? [];
+      list.push(r);
+      reactionMap.set(r.postId!, list);
+    }
+
+    return posts.map((post) => {
+      const reactions = reactionMap.get(post.id) ?? [];
+      const counts: Record<ReactionType, number> = { like: 0, love: 0, wow: 0 };
+      for (const r of reactions) counts[r.type] += 1;
+      const myReaction = viewerId
+        ? reactions.find((r) => r.ownerId === viewerId)?.type ?? null
+        : null;
+
+      return {
+        ...post,
+        ownerAvatarUrl: avatarMap.get(post.ownerId) ?? null,
+        commentsCount: commentMap.get(post.id) ?? 0,
+        reactions: { counts, total: reactions.length, my: myReaction },
+      };
+    });
+  }
+
   /**
    * Feed query rules:
    *
@@ -104,56 +156,47 @@ export class PostsService {
       skip: offset,
     });
 
-    if (posts.length === 0) return { posts: [], total, hasMore: false };
+    return {
+      posts: await this.addPostDetails(posts, viewerId),
+      total,
+      hasMore: offset + posts.length < total,
+    };
+  }
 
-    const postIds = posts.map((p) => p.id);
+  async findByOwner(
+    ownerId: number,
+    options: { limit?: number; offset?: number } = {},
+    viewerId?: number,
+  ): Promise<{ posts: any[]; total: number; hasMore: boolean }> {
+    const viewer = await this.resolveViewer(viewerId);
+    const globalView = this.hasAllAccess(viewer);
+    const limit = Math.min(options.limit ?? 30, 100);
+    const offset = options.offset ?? 0;
 
-    // Owners' avatars so the feed can show profile pictures on post cards.
-    const ownerIds = [...new Set(posts.map((p) => p.ownerId))];
-    const owners = await this.userRepository.find({
-      where: { userId: In(ownerIds) },
-      select: { userId: true, avatarUrl: true },
-    });
-    const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
-
-    const [commentRows, reactionRows] = await Promise.all([
-      this.commentRepository
-        .createQueryBuilder('c')
-        .select('c.postId', 'postId')
-        .addSelect('COUNT(c.id)', 'cnt')
-        .where('c.postId IN (:...ids)', { ids: postIds })
-        .groupBy('c.postId')
-        .getRawMany(),
-      this.reactionRepository.find({
-        where: { postId: In(postIds) },
-      }),
-    ]);
-
-    const commentMap = new Map(commentRows.map((r: any) => [Number(r.postId), Number(r.cnt)]));
-
-    const reactionMap = new Map<number, Reaction[]>();
-    for (const r of reactionRows) {
-      const list = reactionMap.get(r.postId!) ?? [];
-      list.push(r);
-      reactionMap.set(r.postId!, list);
+    let where:
+      | Record<string, unknown>
+      | Record<string, unknown>[];
+    if (globalView) {
+      where = { ownerId };
+    } else if (viewer?.departmentId) {
+      where = [
+        { ownerId, departmentId: viewer.departmentId },
+        { ownerId, departmentId: IsNull() },
+      ];
+    } else {
+      where = { ownerId, departmentId: IsNull() };
     }
 
-    return {
-      posts: posts.map((post) => {
-        const reactions = reactionMap.get(post.id) ?? [];
-        const counts: Record<ReactionType, number> = { like: 0, love: 0, wow: 0 };
-        for (const r of reactions) counts[r.type] += 1;
-        const myReaction = viewerId
-          ? reactions.find((r) => r.ownerId === viewerId)?.type ?? null
-          : null;
+    const total = await this.postRepository.count({ where });
+    const posts = await this.postRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
 
-        return {
-          ...post,
-          ownerAvatarUrl: avatarMap.get(post.ownerId) ?? null,
-          commentsCount: commentMap.get(post.id) ?? 0,
-          reactions: { counts, total: reactions.length, my: myReaction },
-        };
-      }),
+    return {
+      posts: await this.addPostDetails(posts, viewerId),
       total,
       hasMore: offset + posts.length < total,
     };

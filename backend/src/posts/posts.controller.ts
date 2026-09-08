@@ -46,6 +46,24 @@ export class PostsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('user/:userId')
+  async getUserPosts(
+    @Request() req: any,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.postsService.findByOwner(
+      userId,
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+      },
+      req.user?.userId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   async getPost(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     const post = await this.postsService.findOne(id);

@@ -60,11 +60,11 @@ export default function PublicProfilePage() {
       .catch((err) => setError(err.message));
 
     apiFetch<PostsResponse>(
-      `/posts?limit=${PROFILE_POST_PAGE_SIZE}&offset=0`,
+      `/posts/user/${userId}?limit=${PROFILE_POST_PAGE_SIZE}&offset=0`,
     )
       .then((response) => {
         if (cancelled) return;
-        setPosts(response.posts.filter((p) => p.ownerId === userId));
+        setPosts(response.posts);
         setPostsOffset(response.posts.length);
         setPostsHasMore(response.hasMore);
       })
@@ -92,11 +92,11 @@ export default function PublicProfilePage() {
     setPostsLoadingMore(true);
     try {
       const response = await apiFetch<PostsResponse>(
-        `/posts?limit=${PROFILE_POST_PAGE_SIZE}&offset=${postsOffset}`,
+        `/posts/user/${userId}?limit=${PROFILE_POST_PAGE_SIZE}&offset=${postsOffset}`,
       );
       setPosts((previous) => [
         ...previous,
-        ...response.posts.filter((p) => p.ownerId === userId),
+        ...response.posts,
       ]);
       setPostsOffset((previous) => previous + response.posts.length);
       setPostsHasMore(response.hasMore);
