@@ -1,7 +1,15 @@
+import { ReactNode } from 'react';
 import Avatar from './Avatar';
 import { Profile } from '../lib/auth';
 
-export default function ProfileView({ profile }: { profile: Profile }) {
+export default function ProfileView({
+  profile,
+  headerAction,
+}: {
+  profile: Profile;
+  /** Optional action rendered next to the name (e.g. a Message button). */
+  headerAction?: ReactNode;
+}) {
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
       <div className="h-24 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
@@ -20,6 +28,7 @@ export default function ProfileView({ profile }: { profile: Profile }) {
             </h1>
             <p className="text-sm text-slate-500">@{profile.username}</p>
           </div>
+          {headerAction && <div className="pb-1 pl-2">{headerAction}</div>}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">

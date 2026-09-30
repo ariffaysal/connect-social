@@ -6,6 +6,7 @@ import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { Reaction } from '../reactions/entities/reaction.entity';
 import { Report, ReportStatus } from '../reports/entities/report.entity';
+import { Message } from '../messages/entities/message.entity';
 
 @Injectable()
 export class MonitoringService {
@@ -20,7 +21,28 @@ export class MonitoringService {
     private readonly reactionRepository: Repository<Reaction>,
     @InjectRepository(Report)
     private readonly reportRepository: Repository<Report>,
+    @InjectRepository(Message)
+    private readonly messageRepository: Repository<Message>,
   ) {}
+
+  /**
+   * Distinct user pairs with at least one live (unexpired) message. Messages
+   * are purged on a 60-minute retention window, so this reflects the
+   * conversations happening right now.
+   */
+  async activeConversations(): Promise<number> {
+    const rows = await this.messageRepository.find({
+      select: { senderId: true, recipientId: true },
+    });
+    const pairs = new Set(
+      rows.map((row) =>
+        row.senderId < row.recipientId
+          ? `${row.senderId}:${row.recipientId}`
+          : `${row.recipientId}:${row.senderId}`,
+      ),
+    );
+    return pairs.size;
+  }
 
   async overview() {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -39,6 +61,7 @@ export class MonitoringService {
       postsWeek,
       commentsWeek,
       reactionsWeek,
+      activeConversations,
     ] = await Promise.all([
       this.userRepository.count(),
       this.userRepository
@@ -65,6 +88,7 @@ export class MonitoringService {
         .createQueryBuilder('r')
         .where('r.createdAt >= :since', { since: weekAgo.toISOString() })
         .getCount(),
+      this.activeConversations(),
     ]);
 
     // Active users last 24h: distinct users who logged in or created content
@@ -81,6 +105,7 @@ export class MonitoringService {
       totalPosts: posts,
       totalComments: comments,
       totalReactions: reactions,
+      activeConversations,
       pendingReports,
       newUsersWeek,
       postsWeek,

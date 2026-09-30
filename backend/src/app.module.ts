@@ -15,6 +15,7 @@ import { ReportsModule } from './reports/reports.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { MessagesModule } from './messages/messages.module';
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
@@ -23,6 +24,8 @@ import { Reaction } from './reactions/entities/reaction.entity';
 import { Notification } from './notifications/entities/notification.entity';
 import { Report } from './reports/entities/report.entity';
 import { ActivityLog } from './monitoring/entities/activity-log.entity';
+import { Message } from './messages/entities/message.entity';
+import { MessageLog } from './messages/entities/message-log.entity';
 
 function resolveDbConfig(): TypeOrmModuleOptions {
   // Local / self-hosted MySQL via DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_NAME.
@@ -44,7 +47,18 @@ function resolveDbConfig(): TypeOrmModuleOptions {
   imports: [
     TypeOrmModule.forRoot({
       ...resolveDbConfig(),
-      entities: [User, Post, Comment, Department, Reaction, Notification, Report, ActivityLog],
+      entities: [
+        User,
+        Post,
+        Comment,
+        Department,
+        Reaction,
+        Notification,
+        Report,
+        ActivityLog,
+        Message,
+        MessageLog,
+      ],
       migrations: [__dirname + '/database/migrations/*{.js,.ts}'],
       migrationsRun: process.env.DB_MIGRATIONS_RUN === 'true',
       // Auto-creates tables while developing. Disable (`false`) in production
@@ -77,6 +91,7 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     MonitoringModule,
     UploadsModule,
     RealtimeModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [

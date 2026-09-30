@@ -16,10 +16,20 @@ type LiveNotification = {
   createdAt: string;
 };
 
+type LiveMessage = {
+  id: number;
+  senderId: number;
+  senderUsername: string;
+  recipientId: number;
+  recipientUsername: string;
+  content: string;
+  createdAt: string;
+};
+
 type Toast = {
   title: string;
   body: string;
-  postId?: number;
+  href: string;
 };
 
 export default function TopNav({ profile }: { profile: Profile | null }) {
@@ -89,13 +99,24 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
             showToast({
               title: `New post from ${n.actorUsername}`,
               body: n.content,
-              postId: n.postId,
+              href: n.postId ? `/feed?post=${n.postId}` : '/notifications',
             });
             // The badge bump is instant; re-fetch to correct for multiple
             // tabs or notifications that arrived while the socket was down.
             apiFetch<number>('/notifications/unread-count')
               .then(setUnread)
               .catch(() => {});
+          } else if (msg?.type === 'messages:new' && msg?.message) {
+            const m = msg.message as LiveMessage;
+            // Only announce messages addressed to this user (the sender also
+            // receives the event so their other tabs stay in sync).
+            if (profile && m.recipientId === profile.userId) {
+              showToast({
+                title: `New message from ${m.senderUsername}`,
+                body: m.content,
+                href: `/messages?with=${m.senderId}`,
+              });
+            }
           }
         } catch {
           /* ignore malformed messages */
@@ -149,6 +170,7 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
 
         <nav className="hidden items-center gap-1 md:flex">
           {navLink('/feed', 'Feed')}
+          {profile && navLink('/messages', 'Messages')}
           {profile && isModOrAdmin(profile.role) && (
             <div className="relative">
               {navLink('/moderation', 'Moderation')}
@@ -229,7 +251,7 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
               🔔
             </span>
             <Link
-              href={toast.postId ? `/feed?post=${toast.postId}` : '/notifications'}
+              href={toast.href}
               onClick={() => setToast(null)}
               className="min-w-0 flex-1"
             >

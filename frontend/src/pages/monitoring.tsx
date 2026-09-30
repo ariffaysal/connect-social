@@ -6,6 +6,11 @@ import Avatar from '../components/Avatar';
 import useProfile from '../hooks/useProfile';
 import { apiFetch, getToken } from '../lib/auth';
 import { timeAgo } from '../lib/format';
+import {
+  AdminConversationSummary,
+  MonitoredMessage,
+  clockTime,
+} from '../lib/messages';
 
 type Overview = {
   totalUsers: number;
@@ -14,6 +19,7 @@ type Overview = {
   totalPosts: number;
   totalComments: number;
   totalReactions: number;
+  activeConversations: number;
   pendingReports: number;
   newUsersWeek: number;
   postsWeek: number;
@@ -51,6 +57,7 @@ const ACTION_LABEL: Record<string, string> = {
   reaction_added: 'Reacted',
   report_filed: 'Filed a report',
   moderation: 'Moderated content',
+  message_sent: 'Sent a direct message',
   account_created: 'Created an account',
   account_updated: 'Updated an account',
   profile_updated: 'Updated profile',
@@ -63,7 +70,13 @@ export default function MonitoringPage() {
   const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
-  const [tab, setTab] = useState<'overview' | 'leaderboard' | 'activity'>('overview');
+  const [conversations, setConversations] = useState<AdminConversationSummary[]>([]);
+  const [monitored, setMonitored] = useState<AdminConversationSummary | null>(null);
+  const [monitoredMessages, setMonitoredMessages] = useState<MonitoredMessage[]>([]);
+  const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'leaderboard' | 'activity' | 'conversations'>(
+    'overview',
+  );
   const [selectedUser, setSelectedUser] = useState<number | null>(null);
   const [error, setError] = useState('');
 
@@ -97,6 +110,37 @@ export default function MonitoringPage() {
     }
   };
 
+  const loadConversations = async () => {
+    try {
+      setConversations(await apiFetch<AdminConversationSummary[]>('/messages/admin/conversations?limit=50'));
+      setConversationsLoaded(true);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const openMonitoredConversation = async (conversation: AdminConversationSummary) => {
+    setMonitored(conversation);
+    setMonitoredMessages([]);
+    try {
+      const page = await apiFetch<{ messages: MonitoredMessage[] }>(
+        `/messages/admin/thread?userA=${conversation.participantA.userId}&userB=${conversation.participantB.userId}&limit=200`,
+      );
+      setMonitoredMessages(page.messages);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleTabChange = (next: typeof tab) => {
+    setTab(next);
+    if (next === 'conversations' && !conversationsLoaded) void loadConversations();
+    if (next !== 'conversations') {
+      setMonitored(null);
+      setMonitoredMessages([]);
+    }
+  };
+
   const loadUserActivity = async (userId: number) => {
     setSelectedUser(userId);
     try {
@@ -120,6 +164,7 @@ export default function MonitoringPage() {
         { label: 'Posts', value: overview.totalPosts, icon: '📝' },
         { label: 'Comments', value: overview.totalComments, icon: '💬' },
         { label: 'Reactions', value: overview.totalReactions, icon: '👍' },
+        { label: 'Active chats', value: overview.activeConversations, icon: '💬' },
         { label: 'Pending reports', value: overview.pendingReports, icon: '🚩' },
       ]
     : [];
@@ -128,6 +173,7 @@ export default function MonitoringPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'leaderboard', label: 'Top Users' },
     { key: 'activity', label: 'Activity Log' },
+    { key: 'conversations', label: 'Conversations' },
   ];
 
   return (
@@ -144,7 +190,7 @@ export default function MonitoringPage() {
             {tabs.map((t) => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => handleTabChange(t.key)}
                 className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
                   tab === t.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -306,6 +352,112 @@ export default function MonitoringPage() {
               ))}
               {activity.length === 0 && (
                 <p className="py-6 text-center text-sm text-slate-500">No activity recorded.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'conversations' && (
+          <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Active conversations</h2>
+                <button
+                  onClick={() => void loadConversations()}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
+                >
+                  Refresh
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Direct messages are kept for 60 minutes and deleted automatically. This view
+                is an audit copy retained for management monitoring.
+              </p>
+              <div className="mt-4 max-h-[32rem] space-y-1 overflow-y-auto">
+                {conversations.map((conversation) => {
+                  const active =
+                    monitored?.participantA.userId === conversation.participantA.userId &&
+                    monitored?.participantB.userId === conversation.participantB.userId;
+                  return (
+                    <button
+                      key={`${conversation.participantA.userId}:${conversation.participantB.userId}`}
+                      onClick={() => void openMonitoredConversation(conversation)}
+                      className={`w-full rounded-xl p-3 text-left transition ${
+                        active ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar
+                          name={conversation.participantA.fullName || conversation.participantA.username}
+                          avatarUrl={conversation.participantA.avatarUrl}
+                          size="sm"
+                        />
+                        <span className="text-slate-400">↔</span>
+                        <Avatar
+                          name={conversation.participantB.fullName || conversation.participantB.username}
+                          avatarUrl={conversation.participantB.avatarUrl}
+                          size="sm"
+                        />
+                        <span className="ml-auto text-[11px] text-slate-400">
+                          {conversation.messageCount} msg
+                        </span>
+                      </div>
+                      <p className="mt-2 truncate text-sm font-medium text-slate-800">
+                        {conversation.participantA.username} ↔ {conversation.participantB.username}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">{conversation.lastMessage}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {timeAgo(conversation.lastAt)}
+                      </p>
+                    </button>
+                  );
+                })}
+                {conversations.length === 0 && (
+                  <p className="py-6 text-center text-sm text-slate-500">
+                    No active conversations right now.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              {monitored ? (
+                <>
+                  <h2 className="text-lg font-semibold">
+                    {monitored.participantA.username} ↔ {monitored.participantB.username}
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Monitored transcript · {monitoredMessages.length} message(s)
+                  </p>
+                  <div className="mt-4 max-h-[32rem] space-y-2 overflow-y-auto">
+                    {monitoredMessages.map((message) => (
+                      <div key={message.id} className="rounded-xl bg-slate-50 px-4 py-2.5">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-700">
+                            {message.senderUsername}{' '}
+                            <span className="font-normal text-slate-400">
+                              → {message.recipientUsername}
+                            </span>
+                          </p>
+                          <span className="text-[11px] text-slate-400">
+                            {clockTime(message.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">
+                          {message.content}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-400">{timeAgo(message.createdAt)}</p>
+                      </div>
+                    ))}
+                    {monitoredMessages.length === 0 && (
+                      <p className="py-6 text-center text-sm text-slate-500">Loading transcript…</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="py-24 text-center text-sm text-slate-500">
+                  Select a conversation to read the monitored transcript.
+                </p>
               )}
             </div>
           </div>

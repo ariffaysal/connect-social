@@ -5,6 +5,7 @@ import Link from 'next/link';
 import TopNav from '../../components/TopNav';
 import ProfileView from '../../components/ProfileView';
 import Avatar from '../../components/Avatar';
+import MessageDrawer from '../../components/MessageDrawer';
 import useProfile from '../../hooks/useProfile';
 import { apiFetch, canPost, isModOrAdmin, Profile } from '../../lib/auth';
 import { timeAgo } from '../../lib/format';
@@ -115,6 +116,7 @@ export default function PublicProfilePage() {
   const [reactionsLoadingMore, setReactionsLoadingMore] = useState(false);
   const [reactionsLoaded, setReactionsLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [messaging, setMessaging] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -327,7 +329,27 @@ export default function PublicProfilePage() {
 
         {target && !error && (
           <>
-            <ProfileView profile={target} />
+            <ProfileView
+              profile={target}
+              headerAction={
+                me && me.userId !== target.userId && canPost(me.role) ? (
+                  <button
+                    type="button"
+                    onClick={() => setMessaging(true)}
+                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
+                    </svg>
+                    Message
+                  </button>
+                ) : undefined
+              }
+            />
             <div className="mt-6 flex overflow-x-auto rounded-2xl bg-white p-1 shadow-sm" role="tablist" aria-label="Profile activity">
               {(Object.keys(PROFILE_TAB_LABELS) as ProfileTab[]).map((tab) => {
                 const count = tab === 'posts'
@@ -575,6 +597,19 @@ export default function PublicProfilePage() {
               </>
             )}
           </>
+        )}
+
+        {messaging && target && me && (
+          <MessageDrawer
+            partner={{
+              userId: target.userId,
+              username: target.username,
+              fullName: target.fullName,
+              avatarUrl: target.avatarUrl,
+            }}
+            currentUserId={me.userId}
+            onClose={() => setMessaging(false)}
+          />
         )}
       </div>
     </div>
