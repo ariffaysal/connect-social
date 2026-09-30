@@ -19,24 +19,28 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
+import { UsersService } from '../users/users.service';
 
 @Controller()
 export class CommentsController {
   constructor(
     private readonly commentsService: CommentsService,
     private readonly postsService: PostsService,
+    private readonly usersService: UsersService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('users/:userId/comments')
   async getUserComments(
     @Request() req: any,
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId') userRef: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
+    const user = await this.usersService.resolveUserRef(userRef);
+    if (!user) throw new NotFoundException('User not found');
     return this.commentsService.findByOwner(
-      userId,
+      user.userId,
       {
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
@@ -47,8 +51,10 @@ export class CommentsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('posts/:postId/comments')
-  async getComments(@Request() req: any, @Param('postId', ParseIntPipe) postId: number) {
-    return this.commentsService.findByPost(postId, req.user?.userId);
+  async getComments(@Request() req: any, @Param('postId') postRef: string) {
+    const post = await this.postsService.resolvePostRef(postRef);
+    if (!post) throw new NotFoundException('Post not found');
+    return this.commentsService.findByPost(post.id, req.user?.userId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

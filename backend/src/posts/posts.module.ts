@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     MonitoringModule,
     NotificationsModule,
     RealtimeModule,
+    UsersModule,
   ],
   controllers: [PostsController],
   providers: [PostsService],

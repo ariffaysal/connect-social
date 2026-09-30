@@ -2,6 +2,11 @@ import { API_URL } from './api';
 
 export type Profile = {
   userId: number;
+  /**
+   * Opaque, non-guessable ref used in URLs (`/profile/<publicId>`). Fall back
+   * to `userId` only for the rare payload that predates it.
+   */
+  publicId?: string;
   username: string;
   role: string;
   fullName?: string;
@@ -91,4 +96,13 @@ export function isModOrAdmin(role: string): boolean {
 
 export function canPost(role: string): boolean {
   return role === 'SuperAdmin' || role === 'Moderator' || role === 'RegularUser';
+}
+
+/**
+ * URL ref for a user: the opaque public id when we have it, otherwise the
+ * numeric id (which the API still accepts, so old links never break).
+ */
+export function userRef(user: { userId: number; publicId?: string } | null | undefined): string {
+  if (!user) return '';
+  return user.publicId || String(user.userId);
 }

@@ -33,11 +33,17 @@ type ProfileTab = 'posts' | 'comments' | 'reactions';
 
 type ActivityPost = {
   id: number;
+  /** Opaque ref for the post permalink. */
+  publicId?: string;
   title: string;
   ownerId: number;
   ownerUsername: string;
   createdAt: string;
 };
+
+/** Ref used when linking to a post permalink (never the raw numeric id). */
+const postRef = (post: { id: number; publicId?: string }) =>
+  post.publicId || String(post.id);
 
 type ProfileComment = {
   id: number;
@@ -95,6 +101,9 @@ const REACTION_EMOJI: Record<ProfileReaction['type'], string> = {
 export default function PublicProfilePage() {
   const router = useRouter();
   const { id } = router.query;
+  // The profile URL carries an opaque publicId (legacy numeric ids still work).
+  // Every profile-scoped endpoint accepts either, so it is passed through as-is.
+  const profileRef = Array.isArray(id) ? id[0] : id;
   const { profile: me } = useProfile();
   const [target, setTarget] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -119,9 +128,7 @@ export default function PublicProfilePage() {
   const [messaging, setMessaging] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
-    const userId = Number(id);
-    if (!Number.isFinite(userId)) return;
+    if (!profileRef) return;
 
     let cancelled = false;
     setPosts([]);
@@ -138,14 +145,14 @@ export default function PublicProfilePage() {
     setReactionsHasMore(false);
     setReactionsLoaded(false);
 
-    apiFetch<Profile>(`/users/${userId}`)
+    apiFetch<Profile>(`/users/${profileRef}`)
       .then((profile) => {
         if (!cancelled) setTarget(profile);
       })
       .catch((err) => setError(err.message));
 
     apiFetch<PostsResponse>(
-      `/posts/user/${userId}?limit=${PROFILE_POST_PAGE_SIZE}&offset=0`,
+      `/posts/user/${profileRef}?limit=${PROFILE_POST_PAGE_SIZE}&offset=0`,
     )
       .then((response) => {
         if (cancelled) return;
@@ -161,17 +168,16 @@ export default function PublicProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [profileRef]);
 
   const loadCommentsPage = async (offset: number) => {
-    const userId = Number(id);
-    if (!Number.isFinite(userId)) return;
+    if (!profileRef) return;
     if (offset === 0) setCommentsLoading(true);
     else setCommentsLoadingMore(true);
 
     try {
       const response = await apiFetch<CommentsResponse>(
-        `/users/${userId}/comments?limit=${PROFILE_POST_PAGE_SIZE}&offset=${offset}`,
+        `/users/${profileRef}/comments?limit=${PROFILE_POST_PAGE_SIZE}&offset=${offset}`,
       );
       setComments((previous) =>
         offset === 0 ? response.comments : [...previous, ...response.comments],
@@ -188,14 +194,13 @@ export default function PublicProfilePage() {
   };
 
   const loadReactionsPage = async (offset: number) => {
-    const userId = Number(id);
-    if (!Number.isFinite(userId)) return;
+    if (!profileRef) return;
     if (offset === 0) setReactionsLoading(true);
     else setReactionsLoadingMore(true);
 
     try {
       const response = await apiFetch<ReactionsResponse>(
-        `/users/${userId}/reactions?limit=${PROFILE_POST_PAGE_SIZE}&offset=${offset}`,
+        `/users/${profileRef}/reactions?limit=${PROFILE_POST_PAGE_SIZE}&offset=${offset}`,
       );
       setReactions((previous) =>
         offset === 0 ? response.reactions : [...previous, ...response.reactions],
@@ -224,9 +229,8 @@ export default function PublicProfilePage() {
   };
 
   const handleLoadMore = async () => {
-    const userId = Number(id);
     if (
-      !Number.isFinite(userId) ||
+      !profileRef ||
       postsLoading ||
       postsLoadingMore ||
       !postsHasMore
@@ -237,7 +241,7 @@ export default function PublicProfilePage() {
     setPostsLoadingMore(true);
     try {
       const response = await apiFetch<PostsResponse>(
-        `/posts/user/${userId}?limit=${PROFILE_POST_PAGE_SIZE}&offset=${postsOffset}`,
+        `/posts/user/${profileRef}?limit=${PROFILE_POST_PAGE_SIZE}&offset=${postsOffset}`,
       );
       setPosts((previous) => [
         ...previous,
@@ -504,7 +508,7 @@ export default function PublicProfilePage() {
                         <p className="mt-3 text-xs text-slate-500">
                           Commented on{' '}
                           <Link
-                            href={`/feed?post=${comment.post.id}`}
+                            href={`/feed?post=${postRef(comment.post)}`}
                             className="font-semibold text-indigo-600 hover:underline"
                           >
                             {comment.post.title}
@@ -569,7 +573,7 @@ export default function PublicProfilePage() {
                         <p className="mt-3 text-sm text-slate-600">
                           On{' '}
                           <Link
-                            href={`/feed?post=${reaction.post.id}`}
+                            href={`/feed?post=${postRef(reaction.post)}`}
                             className="font-semibold text-indigo-600 hover:underline"
                           >
                             {reaction.post.title}
@@ -603,6 +607,7 @@ export default function PublicProfilePage() {
           <MessageDrawer
             partner={{
               userId: target.userId,
+              publicId: target.publicId,
               username: target.username,
               fullName: target.fullName,
               avatarUrl: target.avatarUrl,

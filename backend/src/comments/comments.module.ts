@@ -10,6 +10,7 @@ import { Reaction } from '../reactions/entities/reaction.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module';
     PostsModule,
     NotificationsModule,
     MonitoringModule,
+    UsersModule,
   ],
   controllers: [CommentsController],
   providers: [CommentsService],

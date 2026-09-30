@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Post,
@@ -48,18 +49,42 @@ export class MessagesController {
     return this.messagesService.conversations(req.user.userId);
   }
 
-  /** The conversation between me and another user. */
-  @Get('with/:userId')
-  thread(
+  /** Unread message count for the bell/nav badge. */
+  @Get('unread-count')
+  async unreadCount(@Request() req: any) {
+    return { count: await this.messagesService.unreadCount(req.user.userId) };
+  }
+
+  /**
+   * The conversation between me and another user. `:ref` is the counterpart's
+   * opaque publicId (or a legacy numeric id). Reading a thread marks it read.
+   */
+  @Get('with/:ref')
+  async thread(
     @Request() req: any,
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('ref') ref: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    return this.messagesService.threadBetween(req.user.userId, userId, {
+    const other = await this.messagesService.resolveUserRef(ref);
+    if (!other) throw new NotFoundException('User not found');
+    return this.messagesService.threadBetween(req.user.userId, other.userId, {
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     });
+  }
+
+  /**
+   * Explicitly mark a conversation read. The thread GET already does this on
+   * open; this endpoint exists for the live path, where a message lands in an
+   * already-open thread over WebSocket and must clear the badge immediately.
+   */
+  @Post('with/:ref/read')
+  async markRead(@Request() req: any, @Param('ref') ref: string) {
+    const other = await this.messagesService.resolveUserRef(ref);
+    if (!other) throw new NotFoundException('User not found');
+    const count = await this.messagesService.markRead(req.user.userId, other.userId);
+    return { success: true, count };
   }
 
   /** Management monitoring: every active conversation on the platform. */

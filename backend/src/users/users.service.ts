@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -8,9 +8,17 @@ import { Post } from '../posts/entities/post.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { Reaction, ReactionType } from '../reactions/entities/reaction.entity';
 import { hashPassword } from '../auth/password.util';
+import { isNumericRef } from '../common/public-ref';
+import {
+  BOOTSTRAP_MIN_PASSWORD_LENGTH,
+  bootstrapAdminFromEnv,
+  shouldSeedDemoData,
+} from '../common/demo-seed';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -31,6 +39,18 @@ export class UsersService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    const demoSeeding = shouldSeedDemoData();
+    await this.ensureInitialAccount(demoSeeding);
+
+    if (!demoSeeding) {
+      // Production default: no known-password accounts, no sample content.
+      this.logger.log(
+        'Demo seeding disabled (SEED_DEMO_DATA unset/false with NODE_ENV=production): ' +
+          'no demo accounts, departments or sample posts were created.',
+      );
+      return;
+    }
+
     const defaultUsers = [
       {
         username: 'admin',
@@ -93,6 +113,53 @@ export class UsersService implements OnModuleInit {
     }
 
     await this.seedDemoContent();
+  }
+
+  /**
+   * Account bootstrap for a database with no users.
+   *
+   * Never invents a credential: either the operator supplies one through
+   * BOOTSTRAP_ADMIN_* (hashed like any other password), or demo seeding is on
+   * and creates the documented demo accounts. Otherwise we refuse and log
+   * loudly, because an instance nobody can sign in to is better than one
+   * anybody can sign in to.
+   */
+  private async ensureInitialAccount(demoSeedingEnabled: boolean) {
+    const existing = await this.userRepository.count();
+    if (existing > 0) return;
+
+    const bootstrap = bootstrapAdminFromEnv();
+    if (bootstrap) {
+      if (bootstrap.password.length < BOOTSTRAP_MIN_PASSWORD_LENGTH) {
+        this.logger.error(
+          `BOOTSTRAP_ADMIN_PASSWORD must be at least ${BOOTSTRAP_MIN_PASSWORD_LENGTH} characters. ` +
+            'No account was created.',
+        );
+        return;
+      }
+      await this.create({
+        username: bootstrap.username,
+        password: bootstrap.password,
+        role: Role.SuperAdmin,
+        fullName: bootstrap.fullName,
+        email: bootstrap.email,
+        jobTitle: bootstrap.jobTitle,
+      });
+      this.logger.log(
+        `Created the initial SuperAdmin "${bootstrap.username}" from BOOTSTRAP_ADMIN_*. ` +
+          'Remove BOOTSTRAP_ADMIN_PASSWORD from the environment now.',
+      );
+      return;
+    }
+
+    if (demoSeedingEnabled) return; // the demo seed below creates the demo accounts
+
+    this.logger.error(
+      'No accounts exist and demo seeding is disabled. To create the first SuperAdmin, ' +
+        'set BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD (min ' +
+        `${BOOTSTRAP_MIN_PASSWORD_LENGTH} chars) and restart once. Do NOT enable SEED_DEMO_DATA ` +
+        'on a reachable deployment — it creates accounts with known passwords.',
+    );
   }
 
   /**
@@ -216,13 +283,19 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async findAll(): Promise<User[]> {
+  /**
+   * Admin listing. Returns user rows plus aggregate stats; the entity's
+   * `@BeforeInsert` hook makes the mapped shape intentionally structural, so
+   * the return type stays open.
+   */
+  async findAll(): Promise<any[]> {
     const users = await this.userRepository.find({
       order: { createdAt: 'ASC' },
       // Admin screens never need password hashes; excluding them reduces the
       // payload and avoids ever returning credential material over the API.
       select: {
         userId: true,
+        publicId: true,
         username: true,
         role: true,
         fullName: true,
@@ -256,6 +329,29 @@ export class UsersService implements OnModuleInit {
     return this.userRepository.findOne({ where: { userId } });
   }
 
+  async findByPublicId(publicId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { publicId } });
+  }
+
+  /**
+   * Resolve a URL ref to a user: either a legacy numeric id or an opaque
+   * `publicId`. Numeric refs are tried first so old links keep working.
+   */
+  async resolveUserRef(ref: string): Promise<User | null> {
+    if (!ref) return null;
+    if (isNumericRef(ref)) {
+      const byId = await this.findById(Number(ref));
+      if (byId) return byId;
+    }
+    return this.findByPublicId(ref);
+  }
+
+  /** Numeric id for a URL ref, or null when it matches no account. */
+  async resolveUserId(ref: string): Promise<number | null> {
+    const user = await this.resolveUserRef(ref);
+    return user ? user.userId : null;
+  }
+
   async getDepartment(departmentId: number) {
     return this.departmentRepository.findOne({ where: { id: departmentId } });
   }
@@ -282,7 +378,7 @@ export class UsersService implements OnModuleInit {
     return this.withoutPassword(await this.findById(userId));
   }
 
-  async getUserProfile(userId: number): Promise<User | null> {
+  async getUserProfile(userId: number): Promise<any> {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) return null;
 
@@ -325,10 +421,10 @@ export class UsersService implements OnModuleInit {
       receivedReactions,
       departmentName: department?.name,
       departmentColor: department?.color,
-    } as User;
+    };
   }
 
-  private async attachStats(users: User[]) {
+  private async attachStats(users: User[]): Promise<any[]> {
     const ids = users.map((u) => u.userId);
     if (ids.length === 0) return users;
 

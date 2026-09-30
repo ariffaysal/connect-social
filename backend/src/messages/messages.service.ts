@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
 import { MessageLog } from './entities/message-log.entity';
 import { User } from '../users/entities/user.entity';
@@ -33,6 +33,7 @@ export type MessagePage = {
 
 export type ConversationSummary = {
   otherUserId: number;
+  otherPublicId?: string;
   otherUsername: string;
   otherFullName?: string;
   otherAvatarUrl?: string;
@@ -40,11 +41,20 @@ export type ConversationSummary = {
   lastAt: Date;
   lastFromMe: boolean;
   messageCount: number;
+  unreadCount: number;
+};
+
+export type ConversationParticipant = {
+  userId: number;
+  publicId?: string;
+  username: string;
+  fullName?: string;
+  avatarUrl?: string;
 };
 
 export type AdminConversationSummary = {
-  participantA: { userId: number; username: string; fullName?: string; avatarUrl?: string };
-  participantB: { userId: number; username: string; fullName?: string; avatarUrl?: string };
+  participantA: ConversationParticipant;
+  participantB: ConversationParticipant;
   lastMessage: string;
   lastAt: Date;
   messageCount: number;
@@ -116,6 +126,20 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     return result.affected ?? 0;
   }
 
+  /**
+   * Resolve a URL ref (opaque `publicId` or legacy numeric id) to a user.
+   * Used by the conversation endpoints so `/messages/with/<ref>` accepts the
+   * same opaque refs the app puts in its links.
+   */
+  async resolveUserRef(ref: string): Promise<User | null> {
+    if (!ref) return null;
+    if (/^[0-9]{1,15}$/.test(ref)) {
+      const byId = await this.userRepository.findOne({ where: { userId: Number(ref) } });
+      if (byId) return byId;
+    }
+    return this.userRepository.findOne({ where: { publicId: ref } });
+  }
+
   /** Send a direct message from one user to another. */
   async send(
     sender: { userId: number; username: string },
@@ -130,6 +154,10 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     if (!recipient || !recipient.isActive) {
       throw new NotFoundException('Recipient not found');
     }
+    const senderUser = await this.userRepository.findOne({
+      where: { userId: sender.userId },
+      select: { userId: true, publicId: true },
+    });
 
     const message = await this.messageRepository.save(
       this.messageRepository.create({
@@ -161,9 +189,17 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Push live to both sides so the recipient sees it instantly and the
-    // sender's other tabs stay in sync.
-    this.realtimeService.sendToUser(recipient.userId, 'messages:new', { message });
-    this.realtimeService.sendToUser(sender.userId, 'messages:new', { message });
+    // sender's other tabs stay in sync. Moderators/admins also receive the
+    // event so management monitoring updates in real time (their clients
+    // never toast on it, since the message is not addressed to them).
+    const payload = {
+      message,
+      senderPublicId: senderUser?.publicId ?? null,
+      recipientPublicId: recipient.publicId ?? null,
+    };
+    this.realtimeService.sendToUser(recipient.userId, 'messages:new', payload);
+    this.realtimeService.sendToUser(sender.userId, 'messages:new', payload);
+    this.realtimeService.sendToModerators('messages:new', payload);
 
     await this.activityLogService
       .log({
@@ -177,6 +213,30 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     return message;
   }
 
+  /** Unread messages addressed to this user (from anyone). */
+  async unreadCount(userId: number): Promise<number> {
+    return this.messageRepository.count({
+      where: { recipientId: userId, readAt: IsNull() },
+    });
+  }
+
+  /**
+   * Mark the conversation with `otherUserId` as read for `userId`. Called when
+   * a thread is opened/rendered and when a live message arrives in an open
+   * thread, which is what keeps the badge instant and accurate.
+   */
+  async markRead(userId: number, otherUserId: number): Promise<number> {
+    const result = await this.messageRepository
+      .createQueryBuilder()
+      .update(Message)
+      .set({ readAt: new Date() })
+      .where('recipientId = :userId', { userId })
+      .andWhere('senderId = :otherUserId', { otherUserId })
+      .andWhere('readAt IS NULL')
+      .execute();
+    return result.affected ?? 0;
+  }
+
   /** Conversation between two users, oldest page first. */
   async threadBetween(
     userId: number,
@@ -184,6 +244,8 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     options: { limit?: number; offset?: number } = {},
   ): Promise<MessagePage> {
     await this.sweep();
+    // Opening a conversation reads it.
+    await this.markRead(userId, otherUserId).catch(() => undefined);
 
     const take = Math.min(Math.max(1, options.limit ?? 50), 200);
     const skip = Math.max(0, options.offset ?? 0);
@@ -224,6 +286,7 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       const existing = summaries.get(otherUserId);
       if (existing) {
         existing.messageCount += 1;
+        if (!fromMe && !row.readAt) existing.unreadCount += 1;
         continue;
       }
       summaries.set(otherUserId, {
@@ -233,6 +296,7 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
         lastAt: row.createdAt,
         lastFromMe: fromMe,
         messageCount: 1,
+        unreadCount: !fromMe && !row.readAt ? 1 : 0,
       });
     }
 
@@ -241,6 +305,7 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       if (summary) {
         summary.otherFullName = user.fullName;
         summary.otherAvatarUrl = user.avatarUrl;
+        summary.otherPublicId = user.publicId;
       }
     });
 
@@ -334,6 +399,7 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       where: { userId: In(unique) },
       select: {
         userId: true,
+        publicId: true,
         username: true,
         fullName: true,
         avatarUrl: true,
@@ -348,6 +414,7 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     const user = users.get(userId);
     return {
       userId,
+      publicId: user?.publicId,
       username: user?.username ?? username,
       fullName: user?.fullName,
       avatarUrl: user?.avatarUrl,

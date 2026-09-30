@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Avatar from './Avatar';
 import { apiFetch } from '../lib/auth';
+import { emitRealtime, subscribeRealtime } from '../lib/realtime';
 import {
   DirectMessage,
   MessagePage,
@@ -15,6 +16,8 @@ const POLL_MS = 8000;
 
 export type MessagePartner = {
   userId: number;
+  /** Opaque ref used in the URL/API when present. */
+  publicId?: string;
   username: string;
   fullName?: string;
   avatarUrl?: string;
@@ -42,25 +45,62 @@ export default function MessageThread({
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastSignature = useRef('');
+  // Prefer the opaque ref so the API/URL never carries a sequential id.
+  const ref = partner.publicId || String(partner.userId);
+
+  /**
+   * Mark this conversation read so the nav badge clears instantly. Only called
+   * when something is actually unread, to avoid pointless chatter.
+   */
+  const markRead = useCallback(async () => {
+    try {
+      await apiFetch(`/messages/with/${ref}/read`, { method: 'POST' });
+      emitRealtime('messages:read', { otherUserId: partner.userId });
+    } catch {
+      /* the next poll will retry */
+    }
+  }, [ref, partner.userId]);
 
   const load = useCallback(
     async (showSpinner = false) => {
       if (showSpinner) setLoading(true);
       try {
-        const page = await apiFetch<MessagePage>(
-          `/messages/with/${partner.userId}?limit=200`,
-        );
+        const page = await apiFetch<MessagePage>(`/messages/with/${ref}?limit=200`);
         setMessages(page.messages);
         setRetentionMinutes(page.retentionMinutes ?? 60);
         setError('');
+        if (
+          page.messages.some((m) => m.recipientId === currentUserId && !m.readAt)
+        ) {
+          void markRead();
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
         if (showSpinner) setLoading(false);
       }
     },
-    [partner.userId],
+    [ref, currentUserId, markRead],
   );
+
+  // Live delivery: a message in this conversation appears immediately (and is
+  // marked read right away) instead of waiting for the next poll.
+  useEffect(() => {
+    return subscribeRealtime('messages:new', (event) => {
+      const incoming = event?.message as DirectMessage | undefined;
+      if (!incoming) return;
+      if (
+        incoming.senderId !== partner.userId &&
+        incoming.recipientId !== partner.userId
+      ) {
+        return;
+      }
+      setMessages((previous) =>
+        previous.some((m) => m.id === incoming.id) ? previous : [...previous, incoming],
+      );
+      if (incoming.recipientId === currentUserId) void markRead();
+    });
+  }, [partner.userId, currentUserId, markRead]);
 
   useEffect(() => {
     setMessages([]);
@@ -122,7 +162,7 @@ export default function MessageThread({
         <Avatar name={name} avatarUrl={partner.avatarUrl} size="md" />
         <div className="min-w-0 flex-1">
           <Link
-            href={`/profile/${partner.userId}`}
+            href={`/profile/${ref}`}
             className="block truncate text-sm font-semibold text-slate-900 hover:text-indigo-600"
           >
             {name}

@@ -1,4 +1,13 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  BeforeInsert,
+} from 'typeorm';
+import { generatePublicId } from '../../common/public-ref';
 
 @Entity()
 @Index('IDX_post_owner_created_at', ['ownerId', 'createdAt'])
@@ -6,6 +15,16 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 export class Post {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  /** Opaque, non-guessable ref used in permalinks (`/feed?post=<publicId>`). */
+  @Index('IDX_post_public_id', { unique: true })
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  publicId?: string;
+
+  @BeforeInsert()
+  assignPublicId() {
+    if (!this.publicId) this.publicId = generatePublicId();
+  }
 
   @Column()
   title!: string;

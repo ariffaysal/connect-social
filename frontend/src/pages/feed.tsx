@@ -17,6 +17,8 @@ type FeedComment = {
   content: string;
   postId: number;
   ownerId: number;
+  /** Opaque ref for the author's profile link. */
+  ownerPublicId?: string;
   ownerUsername: string;
   ownerAvatarUrl?: string;
   createdAt: string;
@@ -25,11 +27,15 @@ type FeedComment = {
 
 type FeedPost = {
   id: number;
+  /** Opaque, non-guessable ref used in the permalink. */
+  publicId?: string;
   title: string;
   content: string;
   imageUrl?: string;
   departmentId?: number;
   ownerId: number;
+  /** Opaque ref for the author's profile link. */
+  ownerPublicId?: string;
   ownerUsername: string;
   ownerAvatarUrl?: string;
   createdAt: string;
@@ -37,6 +43,14 @@ type FeedPost = {
   reactions: ReactionSummary;
   comments?: FeedComment[];
 };
+
+/** Ref used when linking to a member's profile (never the raw numeric id). */
+const ownerRef = (item: { ownerId: number; ownerPublicId?: string }) =>
+  item.ownerPublicId || String(item.ownerId);
+
+/** Ref used when linking to a post permalink. */
+const postRef = (post: { id: number; publicId?: string }) =>
+  post.publicId || String(post.id);
 
 type PostsResponse = {
   posts: FeedPost[];
@@ -46,6 +60,7 @@ type PostsResponse = {
 
 type TopUser = {
   userId: number;
+  publicId?: string;
   username: string;
   fullName: string;
   avatarUrl?: string;
@@ -89,6 +104,7 @@ export default function FeedPage() {
   } | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [reportError, setReportError] = useState('');
+  const [linkCopied, setLinkCopied] = useState<number | null>(null);
 
   // Post edit state
   const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
@@ -182,12 +198,16 @@ export default function FeedPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  // Deep link from the moderation queue (/feed?post=<id>): scroll to the post
-  // and auto-open its comments so a reported comment is immediately visible.
+  // Deep link (/feed?post=<opaque ref or legacy id>): scroll to the post and
+  // auto-open its comments. The ref is an opaque publicId in every link the
+  // app generates; numeric ids are still accepted for old bookmarks.
   useEffect(() => {
-    if (!router.query.post || posts.length === 0) return;
-    const postId = Number(router.query.post);
-    if (!postId || !posts.some((p) => p.id === postId)) return;
+    const raw = router.query.post;
+    const ref = Array.isArray(raw) ? raw[0] : raw;
+    if (!ref || posts.length === 0) return;
+    const target = posts.find((p) => p.publicId === ref || String(p.id) === ref);
+    if (!target) return;
+    const postId = target.id;
     const id = `post-${postId}`;
     const timer = setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -200,6 +220,17 @@ export default function FeedPage() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, router.query.post]);
+
+  const copyPermalink = async (post: FeedPost) => {
+    const url = `${window.location.origin}/feed?post=${postRef(post)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(post.id);
+      setTimeout(() => setLinkCopied((current) => (current === post.id ? null : current)), 2000);
+    } catch {
+      window.prompt('Copy this post link', url);
+    }
+  };
 
   const handleFilter = (next: number | 'all' | 'company') => {
     setFilter(next);
@@ -726,7 +757,7 @@ export default function FeedPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <Link href={`/profile/${post.ownerId}`}>
+                        <Link href={`/profile/${ownerRef(post)}`}>
                           <Avatar
                             name={post.ownerUsername}
                             avatarUrl={post.ownerAvatarUrl}
@@ -735,7 +766,7 @@ export default function FeedPage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <Link
-                              href={`/profile/${post.ownerId}`}
+                              href={`/profile/${ownerRef(post)}`}
                               className="text-sm font-semibold text-slate-900 hover:underline"
                             >
                               {post.ownerUsername}
@@ -762,6 +793,13 @@ export default function FeedPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => void copyPermalink(post)}
+                          title="Copy an opaque, shareable link to this post"
+                          className="rounded-full px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        >
+                          {linkCopied === post.id ? 'Link copied ✓' : '🔗 Share'}
+                        </button>
                         <button
                           onClick={() => setReportTarget({ type: 'post', id: post.id })}
                           className="rounded-full px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
@@ -830,7 +868,7 @@ export default function FeedPage() {
                         )}
                         {(post.comments ?? []).map((comment) => (
                           <div key={comment.id} className="flex gap-2">
-                            <Link href={`/profile/${comment.ownerId}`}>
+                            <Link href={`/profile/${ownerRef(comment)}`}>
                               <Avatar
                                 name={comment.ownerUsername}
                                 avatarUrl={comment.ownerAvatarUrl}
@@ -937,7 +975,7 @@ export default function FeedPage() {
                     {topUsers.map((u, index) => (
                       <Link
                         key={u.userId}
-                        href={`/profile/${u.userId}`}
+                        href={`/profile/${u.publicId || u.userId}`}
                         className="flex items-center gap-3 rounded-xl px-1 py-1 transition hover:bg-slate-50"
                       >
                         <span className="w-4 text-sm font-bold text-slate-300">

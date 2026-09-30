@@ -21,12 +21,14 @@ type Report = {
   resolvedById?: number;
   target?: {
     id: number;
+    /** Opaque ref for the post permalink. */
+    publicId?: string;
     title?: string;
     content?: string;
     ownerId?: number;
     ownerUsername?: string;
     createdAt?: string;
-    post?: { id: number; title?: string; ownerUsername?: string };
+    post?: { id: number; publicId?: string; title?: string; ownerUsername?: string };
   };
 };
 
@@ -207,13 +209,15 @@ export default function ModerationPage() {
                         </>
                       )}
                       {(() => {
-                        const postId =
+                        // Prefer the opaque ref; the numeric id stays as a
+                        // fallback for reports filed before refs existed.
+                        const postRef =
                           report.targetType === 'post'
-                            ? report.target.id
-                            : report.target.post?.id;
-                        return postId ? (
+                            ? report.target.publicId || report.target.id
+                            : report.target.post?.publicId || report.target.post?.id;
+                        return postRef ? (
                           <Link
-                            href={`/feed?post=${postId}`}
+                            href={`/feed?post=${postRef}`}
                             className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
                           >
                             View reported {report.targetType} →

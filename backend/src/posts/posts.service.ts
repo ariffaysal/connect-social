@@ -16,6 +16,7 @@ import { ActivityAction } from '../monitoring/entities/activity-log.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { RealtimeService } from '../realtime/realtime.service';
+import { isNumericRef } from '../common/public-ref';
 
 @Injectable()
 export class PostsService {
@@ -56,9 +57,10 @@ export class PostsService {
     const ownerIds = [...new Set(posts.map((p) => p.ownerId))];
     const owners = await this.userRepository.find({
       where: { userId: In(ownerIds) },
-      select: { userId: true, avatarUrl: true },
+      select: { userId: true, avatarUrl: true, publicId: true },
     });
     const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
+    const ownerRefMap = new Map(owners.map((u) => [u.userId, u.publicId ?? null]));
 
     const [commentRows, reactionRows] = await Promise.all([
       this.commentRepository
@@ -93,6 +95,8 @@ export class PostsService {
       return {
         ...post,
         ownerAvatarUrl: avatarMap.get(post.ownerId) ?? null,
+        // Opaque refs for building profile permalinks without leaking ids.
+        ownerPublicId: ownerRefMap.get(post.ownerId) ?? null,
         commentsCount: commentMap.get(post.id) ?? 0,
         reactions: { counts, total: reactions.length, my: myReaction },
       };
@@ -207,6 +211,23 @@ export class PostsService {
 
   async findOne(id: number): Promise<Post | null> {
     return this.postRepository.findOne({ where: { id } });
+  }
+
+  async findByPublicId(publicId: string): Promise<Post | null> {
+    return this.postRepository.findOne({ where: { publicId } });
+  }
+
+  /**
+   * Resolve a URL ref to a post: either a legacy numeric id or an opaque
+   * `publicId`. Numeric refs are tried first so old permalinks keep working.
+   */
+  async resolvePostRef(ref: string): Promise<Post | null> {
+    if (!ref) return null;
+    if (isNumericRef(ref)) {
+      const byId = await this.findOne(Number(ref));
+      if (byId) return byId;
+    }
+    return this.findByPublicId(ref);
   }
 
   /**

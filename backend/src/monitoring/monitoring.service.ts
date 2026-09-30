@@ -173,6 +173,7 @@ export class MonitoringService {
       where: { isActive: true },
       select: {
         userId: true,
+        publicId: true,
         username: true,
         fullName: true,
         avatarUrl: true,
@@ -214,6 +215,7 @@ export class MonitoringService {
     return users
       .map((u) => ({
         userId: u.userId,
+        publicId: u.publicId,
         username: u.username,
         fullName: u.fullName,
         avatarUrl: u.avatarUrl,

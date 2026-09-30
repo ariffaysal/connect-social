@@ -12,9 +12,13 @@ type Notification = {
   id: number;
   recipientId: number;
   actorId: number;
+  /** Opaque ref for the actor's profile link. */
+  actorPublicId?: string | null;
   actorUsername: string;
   type: 'comment' | 'reaction' | 'mention' | 'system';
   postId?: number;
+  /** Opaque ref for the post permalink. */
+  postPublicId?: string | null;
   commentId?: number;
   content: string;
   isRead: boolean;
@@ -126,7 +130,10 @@ export default function NotificationsPage() {
                     if (!n.isRead) markRead(n.id);
                   }}
                 >
-                  <Link href={`/profile/${n.actorId}`} onClick={(e) => e.stopPropagation()}>
+                  <Link
+                    href={`/profile/${n.actorPublicId || n.actorId}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Avatar name={n.actorUsername} size="md" />
                   </Link>
                   <div className="min-w-0 flex-1">
@@ -148,8 +155,16 @@ export default function NotificationsPage() {
                 </div>
               );
 
-              return n.postId ? (
-                <Link key={n.id} href={`/feed?post=${n.postId}`} onClick={(e) => e.stopPropagation()}>
+              // Only link when we have the opaque post ref. A notification can
+              // outlive its post (deleting a post does not delete the rows),
+              // and in that case there is nothing to open — so we render it
+              // unlinked rather than falling back to a raw numeric id.
+              return n.postPublicId ? (
+                <Link
+                  key={n.id}
+                  href={`/feed?post=${n.postPublicId}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {body}
                 </Link>
               ) : (

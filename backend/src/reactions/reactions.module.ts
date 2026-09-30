@@ -11,6 +11,7 @@ import { PostsModule } from '../posts/posts.module';
 import { CommentsModule } from '../comments/comments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module';
     CommentsModule,
     NotificationsModule,
     MonitoringModule,
+    UsersModule,
   ],
   controllers: [ReactionsController],
   providers: [ReactionsService],

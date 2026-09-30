@@ -16,6 +16,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { MessagesModule } from './messages/messages.module';
+import { PublicIdModule } from './common/public-id.module';
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
@@ -92,6 +93,7 @@ function resolveDbConfig(): TypeOrmModuleOptions {
     UploadsModule,
     RealtimeModule,
     MessagesModule,
+    PublicIdModule,
   ],
   controllers: [AppController],
   providers: [

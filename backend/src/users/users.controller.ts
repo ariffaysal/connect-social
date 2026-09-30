@@ -86,9 +86,16 @@ export class UsersController {
     return updated;
   }
 
-  @Get(':id')
-  async getProfile(@Param('id', ParseIntPipe) id: number) {
-    const profile = await this.usersService.getUserProfile(id);
+  /**
+   * Public profile. `:ref` is either the opaque `publicId` (what every link
+   * in the app uses) or a legacy numeric id, which is still accepted so old
+   * bookmarks and shared links keep working.
+   */
+  @Get(':ref')
+  async getProfile(@Param('ref') ref: string) {
+    const user = await this.usersService.resolveUserRef(ref);
+    if (!user) throw new NotFoundException('User not found');
+    const profile = await this.usersService.getUserProfile(user.userId);
     if (!profile) throw new NotFoundException('User not found');
     return profile;
   }

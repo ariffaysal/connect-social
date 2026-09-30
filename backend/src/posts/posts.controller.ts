@@ -20,10 +20,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
+import { UsersService } from '../users/users.service';
 
 @Controller('posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService) {}
+  constructor(
+    private readonly postsService: PostsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get()
@@ -49,12 +53,14 @@ export class PostsController {
   @Get('user/:userId')
   async getUserPosts(
     @Request() req: any,
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId') userRef: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
+    const owner = await this.usersService.resolveUserRef(userRef);
+    if (!owner) throw new NotFoundException('User not found');
     return this.postsService.findByOwner(
-      userId,
+      owner.userId,
       {
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
@@ -65,8 +71,8 @@ export class PostsController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getPost(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
-    const post = await this.postsService.findOne(id);
+  async getPost(@Request() req: any, @Param('id') ref: string) {
+    const post = await this.postsService.resolvePostRef(ref);
     if (!post) {
       throw new NotFoundException('Post not found');
     }

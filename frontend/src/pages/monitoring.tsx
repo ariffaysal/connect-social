@@ -5,6 +5,7 @@ import TopNav from '../components/TopNav';
 import Avatar from '../components/Avatar';
 import useProfile from '../hooks/useProfile';
 import { apiFetch, getToken } from '../lib/auth';
+import { subscribeRealtime } from '../lib/realtime';
 import { timeAgo } from '../lib/format';
 import {
   AdminConversationSummary,
@@ -31,6 +32,7 @@ type TimelinePoint = { day: string; posts: number; comments: number; logins: num
 
 type TopUser = {
   userId: number;
+  publicId?: string;
   username: string;
   fullName: string;
   avatarUrl?: string;
@@ -119,9 +121,12 @@ export default function MonitoringPage() {
     }
   };
 
-  const openMonitoredConversation = async (conversation: AdminConversationSummary) => {
+  const openMonitoredConversation = async (
+    conversation: AdminConversationSummary,
+    { clear = true }: { clear?: boolean } = {},
+  ) => {
     setMonitored(conversation);
-    setMonitoredMessages([]);
+    if (clear) setMonitoredMessages([]);
     try {
       const page = await apiFetch<{ messages: MonitoredMessage[] }>(
         `/messages/admin/thread?userA=${conversation.participantA.userId}&userB=${conversation.participantB.userId}&limit=200`,
@@ -131,6 +136,17 @@ export default function MonitoringPage() {
       setError(err.message);
     }
   };
+
+  // Management monitoring is live: every direct message refreshes the
+  // conversation list (the backend broadcasts messages:new to moderators).
+  useEffect(() => {
+    if (!conversationsLoaded) return;
+    return subscribeRealtime('messages:new', () => {
+      void loadConversations();
+      if (monitored) void openMonitoredConversation(monitored, { clear: false });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationsLoaded, monitored]);
 
   const handleTabChange = (next: typeof tab) => {
     setTab(next);

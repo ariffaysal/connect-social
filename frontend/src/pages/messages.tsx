@@ -1,26 +1,33 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import TopNav from '../components/TopNav';
 import Avatar from '../components/Avatar';
 import MessageThread, { MessagePartner } from '../components/MessageThread';
 import useProfile from '../hooks/useProfile';
 import { apiFetch, getToken, Profile } from '../lib/auth';
+import { subscribeRealtime } from '../lib/realtime';
 import { timeAgo } from '../lib/format';
-import { ConversationSummary, retentionLabel } from '../lib/messages';
+import { ConversationSummary, partnerRef, retentionLabel } from '../lib/messages';
 
-const POLL_MS = 15000;
+/** Slow safety-net poll: live updates arrive over WebSocket. */
+const FALLBACK_POLL_MS = 30000;
 
 export default function MessagesPage() {
   const router = useRouter();
   const { profile } = useProfile();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [partner, setPartner] = useState<MessagePartner | null>(null);
   const [retentionMinutes, setRetentionMinutes] = useState(60);
   const [error, setError] = useState('');
+
+  const totalUnread = useMemo(
+    () => conversations.reduce((sum, conversation) => sum + (conversation.unreadCount || 0), 0),
+    [conversations],
+  );
 
   const loadConversations = useCallback(async (showSpinner = false) => {
     if (showSpinner) setLoading(true);
@@ -47,33 +54,51 @@ export default function MessagesPage() {
     void loadConversations(true);
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') void loadConversations();
-    }, POLL_MS);
+    }, FALLBACK_POLL_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ?with=<id> opens that conversation (linked from profiles and toasts).
+  // Live inbox: a new message reorders the list and bumps the unread badge
+  // immediately, without waiting for the poll.
+  useEffect(() => {
+    const offNew = subscribeRealtime('messages:new', () => {
+      void loadConversations();
+    });
+    const offRead = subscribeRealtime('messages:read', () => {
+      void loadConversations();
+    });
+    return () => {
+      offNew();
+      offRead();
+    };
+  }, [loadConversations]);
+
+  // ?with=<ref> opens that conversation (linked from profiles and toasts).
   useEffect(() => {
     if (!router.isReady) return;
     const raw = router.query.with;
     const value = Array.isArray(raw) ? raw[0] : raw;
-    if (value && Number.isFinite(Number(value))) setSelected(Number(value));
+    if (value) setSelected(String(value));
   }, [router.isReady, router.query.with]);
 
   // Resolve who we're talking to: prefer the loaded conversation, and fall
-  // back to the user profile for links arriving from elsewhere.
+  // back to the user's profile for links arriving from elsewhere.
   useEffect(() => {
-    if (selected === null) {
+    if (!selected) {
       setPartner(null);
       return;
     }
-    const known = conversations.find((c) => c.otherUserId === selected);
+    const known = conversations.find(
+      (conversation) => partnerRef(conversation) === selected,
+    );
     if (known) {
       setPartner((previous) =>
-        previous && previous.userId === selected
+        previous && previous.userId === known.otherUserId
           ? previous
           : {
               userId: known.otherUserId,
+              publicId: known.otherPublicId,
               username: known.otherUsername,
               fullName: known.otherFullName,
               avatarUrl: known.otherAvatarUrl,
@@ -88,6 +113,7 @@ export default function MessagesPage() {
         if (cancelled) return;
         setPartner({
           userId: user.userId,
+          publicId: user.publicId,
           username: user.username,
           fullName: user.fullName,
           avatarUrl: user.avatarUrl,
@@ -101,9 +127,9 @@ export default function MessagesPage() {
     };
   }, [selected, conversations]);
 
-  const openConversation = (userId: number) => {
-    setSelected(userId);
-    void router.replace({ pathname: '/messages', query: { with: String(userId) } }, undefined, {
+  const openConversation = (ref: string) => {
+    setSelected(ref);
+    void router.replace({ pathname: '/messages', query: { with: ref } }, undefined, {
       shallow: true,
     });
   };
@@ -119,7 +145,14 @@ export default function MessagesPage() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-bold">Messages</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              Messages
+              {totalUnread > 0 && (
+                <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-sm font-semibold text-white">
+                  {totalUnread} new
+                </span>
+              )}
+            </h1>
             <p className="text-sm text-slate-500">
               🔒 Conversations are automatically deleted after{' '}
               {retentionLabel(retentionMinutes)}.
@@ -153,14 +186,15 @@ export default function MessagesPage() {
                 </p>
               )}
               {conversations.map((conversation) => {
-                const active = selected === conversation.otherUserId;
-                const name =
-                  conversation.otherFullName || conversation.otherUsername;
+                const ref = partnerRef(conversation);
+                const active = selected === ref;
+                const name = conversation.otherFullName || conversation.otherUsername;
+                const unread = conversation.unreadCount || 0;
                 return (
                   <button
-                    key={conversation.otherUserId}
+                    key={ref}
                     type="button"
-                    onClick={() => openConversation(conversation.otherUserId)}
+                    onClick={() => openConversation(ref)}
                     className={`flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left transition ${
                       active ? 'bg-indigo-50' : 'hover:bg-slate-50'
                     }`}
@@ -168,16 +202,31 @@ export default function MessagesPage() {
                     <Avatar name={name} avatarUrl={conversation.otherAvatarUrl} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-slate-900">{name}</p>
+                        <p
+                          className={`truncate text-sm ${
+                            unread > 0 ? 'font-bold text-slate-900' : 'font-semibold text-slate-900'
+                          }`}
+                        >
+                          {name}
+                        </p>
                         <span className="shrink-0 text-[11px] text-slate-400">
                           {timeAgo(conversation.lastAt)}
                         </span>
                       </div>
-                      <p className="truncate text-xs text-slate-500">
+                      <p
+                        className={`truncate text-xs ${
+                          unread > 0 ? 'font-medium text-slate-700' : 'text-slate-500'
+                        }`}
+                      >
                         {conversation.lastFromMe ? 'You: ' : ''}
                         {conversation.lastMessage}
                       </p>
                     </div>
+                    {unread > 0 && (
+                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-xs font-semibold text-white">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
                   </button>
                 );
               })}

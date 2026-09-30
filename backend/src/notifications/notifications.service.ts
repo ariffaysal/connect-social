@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
+import { User } from '../users/entities/user.entity';
+import { Post } from '../posts/entities/post.entity';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepository: Repository<Notification>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Post)
+    private readonly postRepository: Repository<Post>,
   ) {}
 
   async create(input: {
@@ -40,12 +46,47 @@ export class NotificationsService {
     return this.notificationRepository.save(notifications);
   }
 
-  async forUser(recipientId: number, limit = 50): Promise<Notification[]> {
-    return this.notificationRepository.find({
+  async forUser(recipientId: number, limit = 50): Promise<any[]> {
+    const notifications = await this.notificationRepository.find({
       where: { recipientId },
       order: { createdAt: 'DESC' },
       take: limit,
     });
+    if (notifications.length === 0) return [];
+
+    // Attach opaque refs so the UI can deep-link to a profile/post without
+    // putting sequential ids in the URL.
+    const actorIds = [...new Set(notifications.map((n) => n.actorId))];
+    const postIds = [
+      ...new Set(
+        notifications
+          .map((n) => n.postId)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    ];
+    const [actors, posts] = await Promise.all([
+      this.userRepository.find({
+        where: { userId: In(actorIds) },
+        select: { userId: true, publicId: true },
+      }),
+      postIds.length > 0
+        ? this.postRepository.find({
+            where: { id: In(postIds) },
+            select: { id: true, publicId: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const actorMap = new Map(actors.map((a) => [a.userId, a.publicId ?? null]));
+    const postMap = new Map(posts.map((p) => [p.id, p.publicId ?? null]));
+
+    return notifications.map((notification) => ({
+      ...notification,
+      actorPublicId: actorMap.get(notification.actorId) ?? null,
+      postPublicId:
+        notification.postId !== undefined && notification.postId !== null
+          ? postMap.get(notification.postId) ?? null
+          : null,
+    }));
   }
 
   async unreadCount(recipientId: number): Promise<number> {

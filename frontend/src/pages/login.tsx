@@ -2,7 +2,8 @@ import Head from 'next/head';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/router';
 import { API_URL } from '../lib/api';
-import { clearToken, fetchProfile, getToken } from '../lib/auth';
+import { clearToken, fetchProfile, getToken, setToken } from '../lib/auth';
+import { syncRealtimeToken } from '../lib/realtime';
 
 /** Only allow local paths as ?next= targets, blocking open redirects. */
 function safeNext(raw: string | string[] | undefined): string | null {
@@ -60,7 +61,9 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem('connectsocial_token', result.access_token);
+      setToken(result.access_token);
+      // Reconnect the shared live socket as the newly signed-in user.
+      syncRealtimeToken();
       router.push(next || '/feed');
     } catch (err) {
       setError('Unable to reach backend.');

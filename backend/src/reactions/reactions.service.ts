@@ -238,6 +238,7 @@ export class ReactionsService {
           post: post
             ? {
                 id: post.id,
+                publicId: post.publicId,
                 title: post.title,
                 ownerId: post.ownerId,
                 ownerUsername: post.ownerUsername,

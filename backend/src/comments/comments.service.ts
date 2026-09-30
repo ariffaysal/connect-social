@@ -40,9 +40,10 @@ export class CommentsService {
     const ownerIds = [...new Set(comments.map((c) => c.ownerId))];
     const owners = await this.userRepository.find({
       where: { userId: In(ownerIds) },
-      select: { userId: true, avatarUrl: true },
+      select: { userId: true, avatarUrl: true, publicId: true },
     });
     const avatarMap = new Map(owners.map((u) => [u.userId, u.avatarUrl ?? null]));
+    const ownerRefMap = new Map(owners.map((u) => [u.userId, u.publicId ?? null]));
 
     const commentIds = comments.map((c) => c.id);
     const reactions = await this.reactionRepository.find({
@@ -67,6 +68,7 @@ export class CommentsService {
       return {
         ...comment,
         ownerAvatarUrl: avatarMap.get(comment.ownerId) ?? null,
+        ownerPublicId: ownerRefMap.get(comment.ownerId) ?? null,
         reactions: { counts, total: commentReactions.length, my: myReaction },
       };
     });
@@ -142,6 +144,7 @@ export class CommentsService {
           post: post
             ? {
                 id: post.id,
+                publicId: post.publicId,
                 title: post.title,
                 ownerId: post.ownerId,
                 ownerUsername: post.ownerUsername,

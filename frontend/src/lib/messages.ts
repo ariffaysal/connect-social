@@ -5,6 +5,8 @@ export type DirectMessage = {
   recipientId: number;
   recipientUsername: string;
   content: string;
+  /** Set once the recipient has opened the conversation. */
+  readAt?: string | null;
   createdAt: string;
 };
 
@@ -17,6 +19,7 @@ export type MessagePage = {
 
 export type ConversationSummary = {
   otherUserId: number;
+  otherPublicId?: string;
   otherUsername: string;
   otherFullName?: string;
   otherAvatarUrl?: string;
@@ -24,11 +27,28 @@ export type ConversationSummary = {
   lastAt: string;
   lastFromMe: boolean;
   messageCount: number;
+  unreadCount: number;
+};
+
+/** Opaque URL ref for a conversation participant. */
+export function partnerRef(conversation: {
+  otherUserId: number;
+  otherPublicId?: string;
+}): string {
+  return conversation.otherPublicId || String(conversation.otherUserId);
+}
+
+export type ConversationParticipant = {
+  userId: number;
+  publicId?: string;
+  username: string;
+  fullName?: string;
+  avatarUrl?: string;
 };
 
 export type AdminConversationSummary = {
-  participantA: { userId: number; username: string; fullName?: string; avatarUrl?: string };
-  participantB: { userId: number; username: string; fullName?: string; avatarUrl?: string };
+  participantA: ConversationParticipant;
+  participantB: ConversationParticipant;
   lastMessage: string;
   lastAt: string;
   messageCount: number;

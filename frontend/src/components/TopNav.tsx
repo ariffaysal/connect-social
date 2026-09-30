@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch, clearToken, getToken, Profile, isModOrAdmin } from '../lib/auth';
-import { API_URL } from '../lib/api';
+import { subscribeRealtime, syncRealtimeToken } from '../lib/realtime';
 
 type LiveNotification = {
   id: number;
@@ -26,6 +26,11 @@ type LiveMessage = {
   createdAt: string;
 };
 
+type LiveMessageEvent = {
+  message: LiveMessage;
+  senderPublicId?: string | null;
+};
+
 type Toast = {
   title: string;
   body: string;
@@ -35,6 +40,7 @@ type Toast = {
 export default function TopNav({ profile }: { profile: Profile | null }) {
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingReports, setPendingReports] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,6 +64,9 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
       apiFetch<number>('/notifications/unread-count')
         .then(setUnread)
         .catch(() => {});
+      apiFetch<{ count: number }>('/messages/unread-count')
+        .then((res) => setUnreadMessages(Number(res?.count) || 0))
+        .catch(() => {});
       if (isMod) {
         apiFetch<number>('/reports/pending-count')
           .then(setPendingReports)
@@ -71,74 +80,71 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
     return () => clearInterval(interval);
   }, [profile]);
 
-  // Live updates over WebSocket for every logged-in user: moderators get the
-  // pending-report count, everyone gets instant new-post notifications.
-  // The 15s polling above stays as a fallback when the socket is down.
+  // Live updates over the app-wide shared WebSocket: moderators get the
+  // pending-report count, everyone gets instant new-post and new-direct-message
+  // events. The 30s polling above stays as a fallback when the socket is down.
   useEffect(() => {
-    if (!profile) return;
-    const token = getToken();
-    if (!token) return;
+    if (!profile || !getToken()) return;
     const isMod = isModOrAdmin(profile.role);
-    const base = API_URL.replace(/^http/, 'ws');
-    let ws: WebSocket | null = null;
-    let closed = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      if (closed) return;
-      const socket = new WebSocket(`${base}/ws?token=${encodeURIComponent(token)}`);
-      ws = socket;
-      socket.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string);
-          if (msg?.type === 'reports:count' && isMod) {
-            setPendingReports(Number(msg.count) || 0);
-          } else if (msg?.type === 'notifications:new' && msg?.notification) {
-            const n = msg.notification as LiveNotification;
-            setUnread((prev) => prev + 1);
-            showToast({
-              title: `New post from ${n.actorUsername}`,
-              body: n.content,
-              href: n.postId ? `/feed?post=${n.postId}` : '/notifications',
-            });
-            // The badge bump is instant; re-fetch to correct for multiple
-            // tabs or notifications that arrived while the socket was down.
-            apiFetch<number>('/notifications/unread-count')
-              .then(setUnread)
-              .catch(() => {});
-          } else if (msg?.type === 'messages:new' && msg?.message) {
-            const m = msg.message as LiveMessage;
-            // Only announce messages addressed to this user (the sender also
-            // receives the event so their other tabs stay in sync).
-            if (profile && m.recipientId === profile.userId) {
-              showToast({
-                title: `New message from ${m.senderUsername}`,
-                body: m.content,
-                href: `/messages?with=${m.senderId}`,
-              });
-            }
-          }
-        } catch {
-          /* ignore malformed messages */
-        }
-      };
-      socket.onclose = () => {
-        if (!closed) retryTimer = setTimeout(connect, 4000);
-      };
-      socket.onerror = () => socket.close();
-    };
+    const offReports = isMod
+      ? subscribeRealtime('reports:count', (event) => {
+          setPendingReports(Number(event.count) || 0);
+        })
+      : () => {};
 
-    connect();
+    const offNotifications = subscribeRealtime('notifications:new', (event) => {
+      const n = event.notification as LiveNotification | undefined;
+      if (!n) return;
+      setUnread((previous) => previous + 1);
+      showToast({
+        title: `New post from ${n.actorUsername}`,
+        body: n.content,
+        href: n.postId ? `/feed?post=${n.postId}` : '/notifications',
+      });
+      // The badge bump is instant; re-fetch to correct for multiple tabs or
+      // notifications that arrived while the socket was down.
+      apiFetch<number>('/notifications/unread-count')
+        .then(setUnread)
+        .catch(() => {});
+    });
+
+    // Instant DM notification: the badge bumps and a toast appears the moment
+    // the message is sent — no polling delay.
+    const offMessages = subscribeRealtime('messages:new', (event: LiveMessageEvent) => {
+      const m = event.message;
+      if (!m || m.recipientId !== profile.userId) return;
+      setUnreadMessages((previous) => previous + 1);
+      showToast({
+        title: `New message from ${m.senderUsername}`,
+        body: m.content,
+        href: `/messages?with=${event.senderPublicId || m.senderId}`,
+      });
+      apiFetch<{ count: number }>('/messages/unread-count')
+        .then((res) => setUnreadMessages(Number(res?.count) || 0))
+        .catch(() => {});
+    });
+
+    // A conversation was opened/read elsewhere in the app — clear the badge.
+    const offRead = subscribeRealtime('messages:read', () => {
+      apiFetch<{ count: number }>('/messages/unread-count')
+        .then((res) => setUnreadMessages(Number(res?.count) || 0))
+        .catch(() => {});
+    });
+
     return () => {
-      closed = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      ws?.close();
+      offReports();
+      offNotifications();
+      offMessages();
+      offRead();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   const handleLogout = () => {
     clearToken();
+    // Drop the live connection so the next sign-in opens a fresh socket.
+    syncRealtimeToken();
     router.push('/login');
   };
 
@@ -170,7 +176,16 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
 
         <nav className="hidden items-center gap-1 md:flex">
           {navLink('/feed', 'Feed')}
-          {profile && navLink('/messages', 'Messages')}
+          {profile && (
+            <div className="relative">
+              {navLink('/messages', 'Messages')}
+              {unreadMessages > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1 text-xs font-semibold text-white">
+                  {unreadMessages > 99 ? '99+' : unreadMessages}
+                </span>
+              )}
+            </div>
+          )}
           {profile && isModOrAdmin(profile.role) && (
             <div className="relative">
               {navLink('/moderation', 'Moderation')}
@@ -186,6 +201,26 @@ export default function TopNav({ profile }: { profile: Profile | null }) {
         </nav>
 
         <div className="flex items-center gap-2">
+          {profile && (
+            <Link
+              href="/messages"
+              className="relative rounded-full p-2 text-slate-700 transition hover:bg-slate-200"
+              title="Messages"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
+              </svg>
+              {unreadMessages > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1 text-xs font-semibold text-white">
+                  {unreadMessages > 99 ? '99+' : unreadMessages}
+                </span>
+              )}
+            </Link>
+          )}
           <Link
             href="/notifications"
             className="relative rounded-full p-2 text-slate-700 transition hover:bg-slate-200"

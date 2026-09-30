@@ -32,6 +32,14 @@ export class Message {
   @Column('text')
   content!: string;
 
+  /**
+   * When the recipient opened the conversation. NULL means unread, which is
+   * what powers the instant badge/show-inbox behaviour over WebSocket.
+   */
+  @Index('IDX_message_read_at')
+  @Column({ type: 'timestamp', nullable: true })
+  readAt?: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

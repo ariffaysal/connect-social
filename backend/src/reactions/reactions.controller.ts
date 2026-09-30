@@ -9,24 +9,31 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ReactionsService } from './reactions.service';
 import { CreateReactionDto } from './dto/create-reaction.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UsersService } from '../users/users.service';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class ReactionsController {
-  constructor(private readonly reactionsService: ReactionsService) {}
+  constructor(
+    private readonly reactionsService: ReactionsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Get('users/:userId/reactions')
   async getUserReactions(
     @Request() req: any,
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId') userRef: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
+    const user = await this.usersService.resolveUserRef(userRef);
+    if (!user) throw new NotFoundException('User not found');
     return this.reactionsService.findByOwner(
-      userId,
+      user.userId,
       {
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
