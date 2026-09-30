@@ -58,22 +58,31 @@ export class AuthService {
 
     await this.usersService.update(user.userId, updates);
 
+    // Re-read after the update: upgrading a legacy plaintext password bumps
+    // `tokenVersion`, and the token must carry the *new* generation or the
+    // guard would reject it on first use.
+    const authState = await this.usersService.findAuthState(user.userId);
+    const role = authState?.role ?? user.role;
+    const username = authState?.username ?? user.username;
+
     await this.activityLogService.log({
       userId: user.userId,
-      username: user.username,
+      username,
       action: ActivityAction.Login,
-      detail: `Signed in as ${user.role}`,
+      detail: `Signed in as ${role}`,
     });
 
     return {
       access_token: this.jwtService.sign({
-        username: user.username,
+        username,
         sub: user.userId,
-        role: user.role,
+        role,
+        // Session generation: bumped on password change / deactivation.
+        ver: authState?.tokenVersion ?? 0,
       }),
-      role: user.role,
+      role,
       userId: user.userId,
-      username: user.username,
+      username,
     };
   }
 

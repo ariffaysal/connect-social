@@ -8,6 +8,7 @@ export enum ActivityAction {
   ReportFiled = 'report_filed',
   Moderation = 'moderation',
   MessageSent = 'message_sent',
+  MessageReviewed = 'message_reviewed',
   AccountCreated = 'account_created',
   AccountUpdated = 'account_updated',
   ProfileUpdated = 'profile_updated',

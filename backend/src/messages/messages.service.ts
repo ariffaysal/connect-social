@@ -18,6 +18,9 @@ import { ActivityAction } from '../monitoring/entities/activity-log.entity';
 /** Default lifetime of a live conversation message, in minutes. */
 export const DEFAULT_RETENTION_MINUTES = 60;
 
+/** How long the management audit copy is kept before it is swept. */
+export const DEFAULT_AUDIT_RETENTION_HOURS = 24;
+
 /** How often the retention sweep runs. */
 const PURGE_INTERVAL_MS = 60_000;
 
@@ -66,9 +69,29 @@ export function resolveRetentionMinutes(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_RETENTION_MINUTES;
 }
 
-/** Whether each message is also mirrored into the admin monitoring table. */
+/**
+ * Whether each message is mirrored into the management audit table.
+ *
+ * This is a surveillance feature, so it is **off by default in production**:
+ * a deployment has to opt in explicitly. Outside production it defaults on so
+ * the monitoring console is usable in local development. `=false` always wins.
+ */
 export function isAuditEnabled(): boolean {
-  return process.env.MESSAGE_AUDIT_ENABLED !== 'false';
+  const raw = process.env.MESSAGE_AUDIT_ENABLED?.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(raw ?? '')) return true;
+  if (['false', '0', 'no', 'off'].includes(raw ?? '')) return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
+/**
+ * Retention for the audit copy, in hours. Indefinite storage of private
+ * messages is the risk this bounds; set `MESSAGE_AUDIT_RETENTION_HOURS=0` to
+ * keep them forever (an explicit, informed choice).
+ */
+export function auditRetentionHours(): number {
+  const raw = Number(process.env.MESSAGE_AUDIT_RETENTION_HOURS);
+  if (raw === 0) return 0;
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_AUDIT_RETENTION_HOURS;
 }
 
 @Injectable()
@@ -111,6 +134,10 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       if (removed > 0) {
         this.logger.log(`Purged ${removed} message(s) older than the retention window`);
       }
+      const auditRemoved = await this.purgeAuditLog();
+      if (auditRemoved > 0) {
+        this.logger.log(`Purged ${auditRemoved} audit cop(ies) older than the audit retention`);
+      }
     } catch (err) {
       this.logger.warn(`Message retention sweep failed: ${(err as Error).message}`);
     }
@@ -122,6 +149,22 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder()
       .delete()
       .where('createdAt < :cutoff', { cutoff: this.retentionCutoff() })
+      .execute();
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Delete audit copies past their retention. Without this the management
+   * archive would be an unbounded, permanent record of private conversations.
+   */
+  async purgeAuditLog(): Promise<number> {
+    const hours = auditRetentionHours();
+    if (hours <= 0) return 0;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const result = await this.messageLogRepository
+      .createQueryBuilder()
+      .delete()
+      .where('createdAt < :cutoff', { cutoff })
       .execute();
     return result.affected ?? 0;
   }
@@ -199,7 +242,11 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
     };
     this.realtimeService.sendToUser(recipient.userId, 'messages:new', payload);
     this.realtimeService.sendToUser(sender.userId, 'messages:new', payload);
-    this.realtimeService.sendToModerators('messages:new', payload);
+    // Only SuperAdmins (the audience of the monitoring console) — Moderators
+    // must not receive a live stream of everyone's private messages.
+    if (isAuditEnabled()) {
+      this.realtimeService.sendToAdmins('messages:new', payload);
+    }
 
     await this.activityLogService
       .log({
@@ -372,8 +419,20 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       }));
   }
 
-  /** Monitoring view of one conversation (audit archive included). */
-  async adminThread(userA: number, userB: number, options: { limit?: number; offset?: number } = {}) {
+  /**
+   * Monitoring view of one conversation (audit archive included).
+   *
+   * Reading someone's private messages is itself a sensitive action, so every
+   * transcript review is written to the activity log — otherwise management
+   * surveillance would be invisible in the very audit trail used to monitor
+   * management.
+   */
+  async adminThread(
+    userA: number,
+    userB: number,
+    options: { limit?: number; offset?: number } = {},
+    reviewer?: { userId: number; username: string },
+  ) {
     await this.sweep();
 
     const take = Math.min(Math.max(1, options.limit ?? 100), 500);
@@ -388,6 +447,17 @@ export class MessagesService implements OnModuleInit, OnModuleDestroy {
       take,
       skip,
     });
+
+    if (reviewer && rows.length > 0) {
+      await this.activityLogService
+        .log({
+          userId: reviewer.userId,
+          username: reviewer.username,
+          action: ActivityAction.MessageReviewed,
+          detail: `Read the direct-message transcript between users #${userA} and #${userB} (${rows.length} shown)`,
+        })
+        .catch(() => undefined);
+    }
 
     return { messages: rows.reverse(), total, hasMore: skip + rows.length < total };
   }

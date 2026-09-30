@@ -144,7 +144,7 @@ npm run dev
 - Frontend: **http://localhost:3000**
 - Backend API: **http://localhost:3001** (WebSocket at `ws://localhost:3001/ws`)
 
-On first start the backend seeds demo accounts and sample content (only if the database is empty):
+Outside production the backend seeds demo accounts and sample content (only if the database is empty):
 
 | Username | Password | Role |
 | -------- | -------- | ---- |
@@ -154,6 +154,12 @@ On first start the backend seeds demo accounts and sample content (only if the d
 | `guest` | `guest123` | Guest |
 
 Log in as **`admin` / `password`** to explore the full admin, monitoring, and moderation experience.
+
+These are public credentials. Seeding is **disabled automatically when
+`NODE_ENV=production`**, and can be forced either way with `SEED_DEMO_DATA`
+(`true` to always seed, `false` to never seed). A production instance gets its
+first account from `BOOTSTRAP_ADMIN_*` instead — see step 5 of the deployment
+guide below.
 
 ---
 
@@ -173,6 +179,9 @@ Base URL: `http://localhost:3001` — every request (except login) requires `Aut
 | `GET /notifications` · `GET /notifications/unread-count` · `PATCH …/read` · `PATCH /notifications/read-all` | Notifications | Authenticated (own only) |
 | `GET /monitoring/overview` · `/timeline` · `/activity` | Analytics & audit trail | SuperAdmin |
 | `GET /monitoring/top-users` | Engagement leaderboard | Authenticated |
+| `POST /messages` · `GET /messages/conversations` · `GET /messages/with/:ref` · `POST /messages/with/:ref/read` | Direct messages (kept 60 min, then deleted) | RegularUser+ to send · all roles to read own |
+| `GET /messages/unread-count` · `GET /messages/retention` | Badge count + retention policy | Authenticated (own only) |
+| `GET /messages/admin/conversations` · `GET /messages/admin/thread` | Management monitoring of conversations (reads are logged) | SuperAdmin |
 | `POST /uploads` | Upload an image (PNG/JPG/GIF/WebP, ≤5 MB) | RegularUser+ |
 | `GET /ws?token=<JWT>` | WebSocket — live events | Authenticated |
 
@@ -282,35 +291,47 @@ nano .env                    # DOMAIN, NEXT_PUBLIC_API_URL, CORS_ORIGIN,
                              # DB_PASSWORD, JWT_SECRET
 ```
 
-### 5. First boot — create the schema, then lock it down
+### 5. First boot — create the schema and the first account
 
 The repository has no baseline migration and production mode never creates
 tables on its own, so the **first** start runs with the `.env.example` defaults
-`NODE_ENV=development` + `DB_SYNCHRONIZE=true`. That creates every table and
-seeds the demo data:
+`NODE_ENV=development` + `DB_SYNCHRONIZE=true`. That creates every table.
+
+Because `NODE_ENV=development` would also seed the known-password demo accounts,
+create the first SuperAdmin explicitly and tell the backend **not** to seed:
 
 ```bash
+# in .env, for the first boot only
+echo 'SEED_DEMO_DATA=false' >> .env
+printf 'BOOTSTRAP_ADMIN_USERNAME=admin\n' >> .env
+printf 'BOOTSTRAP_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 24)" >> .env
+
 docker compose up -d --build
 docker compose ps                 # wait until api and mysql report healthy
 curl -s https://YOUR_DOMAIN/api/health
+docker compose logs api | grep -i 'initial SuperAdmin'   # note the password it used
 ```
 
-Then switch to production behaviour so later starts never mutate the schema:
+The backend creates exactly one SuperAdmin with that password (or, if the user
+table is not empty, nothing at all). Then switch to production behaviour so
+later starts never mutate the schema or seed anything:
 
 ```bash
 sed -i 's/^NODE_ENV=.*/NODE_ENV=production/; s/^DB_SYNCHRONIZE=.*/DB_SYNCHRONIZE=false/; s/^DB_MIGRATIONS_RUN=.*/DB_MIGRATIONS_RUN=true/' .env
 docker compose up -d
 ```
 
-### 6. Secure the seeded demo accounts
+### 6. Remove the bootstrap password
 
-The first boot seeds `admin`/`password`, `moderator`/`password`,
-`user`/`password` and `guest`/`guest123`. Before sharing the URL:
+Delete `BOOTSTRAP_ADMIN_PASSWORD` (and `BOOTSTRAP_ADMIN_USERNAME`) from `.env`
+and `docker compose up -d` again. It is only read when the user table is empty,
+but it should not sit in the environment — treat it like any other secret.
 
-1. Log in as **admin / password**.
-2. Admin → open the `admin` account → set a strong password.
-3. Deactivate (or delete) `moderator`, `user` and `guest`, then create real
-   accounts with the right roles — disabled accounts cannot log in.
+If you deliberately ran with `SEED_DEMO_DATA=true`, the demo accounts exist:
+create real accounts with the right roles, then deactivate `moderator`, `user`
+and `guest`. Changing a password or deactivating an account takes effect on the
+**next request** (sessions are re-validated server-side and revoked through
+`tokenVersion`), so you do not have to wait for tokens to expire.
 
 ### 7. Verify the deployment
 

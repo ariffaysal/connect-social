@@ -368,14 +368,45 @@ export class UsersService implements OnModuleInit {
   /**
    * Updates a user. Any plaintext password supplied here (admin reset or the
    * automatic login upgrade) is hashed before being persisted.
+   *
+   * A password change or a deactivation bumps `tokenVersion`, which revokes
+   * every JWT issued before this call. That makes "reset this password" and
+   * "disable this account" take effect immediately instead of leaving the old
+   * session valid until the token expires.
    */
   async update(userId: number, partial: Partial<User>): Promise<User | null> {
-    const data = { ...partial };
+    const data: Partial<User> = { ...partial };
+    const revokesSessions = Boolean(data.password) || data.isActive === false;
+
     if (data.password) {
       data.password = await hashPassword(data.password);
     }
+    if (revokesSessions) {
+      const current = await this.findById(userId);
+      data.tokenVersion = (current?.tokenVersion ?? 0) + 1;
+    }
+
     await this.userRepository.update(userId, data);
     return this.withoutPassword(await this.findById(userId));
+  }
+
+  /**
+   * Minimal, current authorization state for request-time token validation:
+   * the fields the auth guard must trust come from here, not from the token.
+   */
+  async findAuthState(userId: number): Promise<User | null> {
+    if (!userId) return null;
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: {
+        userId: true,
+        username: true,
+        role: true,
+        isActive: true,
+        tokenVersion: true,
+      },
+    });
+    return user;
   }
 
   async getUserProfile(userId: number): Promise<any> {

@@ -57,6 +57,17 @@ export class RealtimeService implements OnModuleDestroy {
     );
   }
 
+  /**
+   * Send an event to every connected SuperAdmin.
+   *
+   * Used for private-message monitoring: keeping this off the Moderator role
+   * means routine moderators do not receive a live feed of everyone's direct
+   * messages, only the operators who own that console.
+   */
+  sendToAdmins(type: string, data: Record<string, unknown>) {
+    this.sendTo((client) => client.role === Role.SuperAdmin, type, data);
+  }
+
   /** Send an event to every connected client. */
   sendToAll(type: string, data: Record<string, unknown>) {
     this.sendTo(() => true, type, data);

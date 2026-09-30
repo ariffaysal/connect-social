@@ -10,7 +10,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { MessagesService, isAuditEnabled, resolveRetentionMinutes } from './messages.service';
+import {
+  MessagesService,
+  auditRetentionHours,
+  isAuditEnabled,
+  resolveRetentionMinutes,
+} from './messages.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -22,12 +27,13 @@ import { Role } from '../auth/roles.enum';
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
-  /** Retention details so the UI can show the one-hour auto-delete notice. */
+  /** Retention details so the UI can show the auto-delete notice accurately. */
   @Get('retention')
   retention() {
     return {
       retentionMinutes: resolveRetentionMinutes(),
       auditEnabled: isAuditEnabled(),
+      auditRetentionHours: auditRetentionHours(),
     };
   }
 
@@ -87,9 +93,15 @@ export class MessagesController {
     return { success: true, count };
   }
 
-  /** Management monitoring: every active conversation on the platform. */
+  /**
+   * Management monitoring: every active conversation on the platform.
+   *
+   * SuperAdmin only. Routine Moderators moderate content; they do not get
+   * blanket access to private conversations, and the realtime broadcast that
+   * feeds this console excludes them too.
+   */
   @UseGuards(RolesGuard)
-  @Roles(Role.SuperAdmin, Role.Moderator)
+  @Roles(Role.SuperAdmin)
   @Get('admin/conversations')
   adminConversations(@Query('limit') limit?: string) {
     return this.messagesService.adminConversations(limit ? Number(limit) : 50);
@@ -97,17 +109,23 @@ export class MessagesController {
 
   /** Management monitoring: the full monitored thread between two users. */
   @UseGuards(RolesGuard)
-  @Roles(Role.SuperAdmin, Role.Moderator)
+  @Roles(Role.SuperAdmin)
   @Get('admin/thread')
   adminThread(
+    @Request() req: any,
     @Query('userA', ParseIntPipe) userA: number,
     @Query('userB', ParseIntPipe) userB: number,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    return this.messagesService.adminThread(userA, userB, {
-      limit: limit ? Number(limit) : undefined,
-      offset: offset ? Number(offset) : undefined,
-    });
+    return this.messagesService.adminThread(
+      userA,
+      userB,
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+      },
+      { userId: req.user.userId, username: req.user.username },
+    );
   }
 }

@@ -10,6 +10,7 @@ import { User } from '../src/users/entities/user.entity';
 import { Post } from '../src/posts/entities/post.entity';
 import { Message } from '../src/messages/entities/message.entity';
 import { MessageLog } from '../src/messages/entities/message-log.entity';
+import { ActivityLog, ActivityAction } from '../src/monitoring/entities/activity-log.entity';
 import { Role } from '../src/auth/roles.enum';
 import { RealtimeService } from '../src/realtime/realtime.service';
 
@@ -185,15 +186,27 @@ describe('Direct messages: send, thread, retention, monitoring', () => {
     expect(live).toBeGreaterThan(0);
   });
 
-  it('exposes conversation monitoring to management only', async () => {
-    const denied = await request(app.getHttpServer())
+  it('exposes conversation monitoring to SuperAdmins only, and logs reads', async () => {
+    const asUser = await request(app.getHttpServer())
       .get('/messages/admin/conversations')
       .set('Authorization', `Bearer ${mint(app, userId, 'user', Role.RegularUser)}`);
-    expect(denied.status).toBe(403);
+    expect(asUser.status).toBe(403);
+
+    // Moderators moderate content; they do not get blanket access to private
+    // conversations (this used to be allowed).
+    const asModerator = await request(app.getHttpServer())
+      .get('/messages/admin/conversations')
+      .set('Authorization', `Bearer ${moderatorToken}`);
+    expect(asModerator.status).toBe(403);
+
+    const asModeratorTranscript = await request(app.getHttpServer())
+      .get(`/messages/admin/thread?userA=${userId}&userB=${moderatorId}`)
+      .set('Authorization', `Bearer ${moderatorToken}`);
+    expect(asModeratorTranscript.status).toBe(403);
 
     const allowed = await request(app.getHttpServer())
       .get('/messages/admin/conversations')
-      .set('Authorization', `Bearer ${moderatorToken}`);
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(allowed.status).toBe(200);
     const pair = allowed.body.find(
       (c: any) =>
@@ -207,6 +220,13 @@ describe('Direct messages: send, thread, retention, monitoring', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(transcript.status).toBe(200);
     expect(transcript.body.messages.length).toBeGreaterThanOrEqual(2);
+
+    // Reading someone's private messages is itself auditable.
+    const reviews = await dataSource.getRepository(ActivityLog).find({
+      where: { action: ActivityAction.MessageReviewed },
+    });
+    expect(reviews.length).toBeGreaterThan(0);
+    expect(reviews[0].userId).toBe(adminId);
   });
 
   it('purges live messages after the retention window but keeps the audit copy', async () => {
@@ -243,6 +263,50 @@ describe('Direct messages: send, thread, retention, monitoring', () => {
       where: { content: 'this one expires quickly' },
     });
     expect(audit.length).toBe(1);
+  });
+
+  it('stops mirroring messages into the audit table when the audit is disabled', async () => {
+    process.env.MESSAGE_AUDIT_ENABLED = 'false';
+    process.env.MESSAGE_RETENTION_MINUTES = '60';
+    try {
+      const before = await dataSource.getRepository(MessageLog).count();
+
+      const sent = await request(app.getHttpServer())
+        .post('/messages')
+        .set('Authorization', `Bearer ${mint(app, userId, 'user', Role.RegularUser)}`)
+        .send({ recipientId: moderatorId, content: 'audit disabled probe' });
+      expect(sent.status).toBe(201);
+
+      const after = await dataSource.getRepository(MessageLog).count();
+      expect(after).toBe(before);
+
+      // Only the live copy exists, so it disappears with the 60-minute purge.
+      const live = await dataSource
+        .getRepository(Message)
+        .find({ where: { content: 'audit disabled probe' } });
+      expect(live).toHaveLength(1);
+    } finally {
+      delete process.env.MESSAGE_AUDIT_ENABLED;
+    }
+  });
+
+  it('purges audit copies past the audit retention window', async () => {
+    // ~0.7 seconds instead of the 24-hour default.
+    process.env.MESSAGE_AUDIT_RETENTION_HOURS = '0.0002';
+    try {
+      expect(await dataSource.getRepository(MessageLog).count()).toBeGreaterThan(0);
+      await sleep(1200);
+
+      // Any message read runs the retention sweep.
+      const thread = await request(app.getHttpServer())
+        .get(`/messages/with/${moderatorId}`)
+        .set('Authorization', `Bearer ${mint(app, userId, 'user', Role.RegularUser)}`);
+      expect(thread.status).toBe(200);
+
+      expect(await dataSource.getRepository(MessageLog).count()).toBe(0);
+    } finally {
+      delete process.env.MESSAGE_AUDIT_RETENTION_HOURS;
+    }
   });
 });
 

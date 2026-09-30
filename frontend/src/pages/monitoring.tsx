@@ -11,6 +11,7 @@ import {
   AdminConversationSummary,
   MonitoredMessage,
   clockTime,
+  retentionLabel,
 } from '../lib/messages';
 
 type Overview = {
@@ -60,6 +61,7 @@ const ACTION_LABEL: Record<string, string> = {
   report_filed: 'Filed a report',
   moderation: 'Moderated content',
   message_sent: 'Sent a direct message',
+  message_reviewed: 'Reviewed private messages',
   account_created: 'Created an account',
   account_updated: 'Updated an account',
   profile_updated: 'Updated profile',
@@ -76,6 +78,11 @@ export default function MonitoringPage() {
   const [monitored, setMonitored] = useState<AdminConversationSummary | null>(null);
   const [monitoredMessages, setMonitoredMessages] = useState<MonitoredMessage[]>([]);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  const [messageRetention, setMessageRetention] = useState<{
+    retentionMinutes: number;
+    auditRetentionHours: number;
+    auditEnabled: boolean;
+  } | null>(null);
   const [tab, setTab] = useState<'overview' | 'leaderboard' | 'activity' | 'conversations'>(
     'overview',
   );
@@ -114,7 +121,16 @@ export default function MonitoringPage() {
 
   const loadConversations = async () => {
     try {
-      setConversations(await apiFetch<AdminConversationSummary[]>('/messages/admin/conversations?limit=50'));
+      const [list, retention] = await Promise.all([
+        apiFetch<AdminConversationSummary[]>('/messages/admin/conversations?limit=50'),
+        apiFetch<{
+          retentionMinutes: number;
+          auditRetentionHours: number;
+          auditEnabled: boolean;
+        }>('/messages/retention'),
+      ]);
+      setConversations(list);
+      setMessageRetention(retention);
       setConversationsLoaded(true);
     } catch (err: any) {
       setError(err.message);
@@ -386,9 +402,21 @@ export default function MonitoringPage() {
                 </button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Direct messages are kept for 60 minutes and deleted automatically. This view
-                is an audit copy retained for management monitoring.
+                Direct messages disappear after{' '}
+                {retentionLabel(messageRetention?.retentionMinutes ?? 60)}. This console reads a
+                separate audit copy, kept for{' '}
+                {messageRetention?.auditRetentionHours
+                  ? `${messageRetention.auditRetentionHours} hours`
+                  : 'as long as configured'}
+                . Opening a transcript is itself recorded in the activity log.
               </p>
+              {messageRetention?.auditEnabled === false && (
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+                  Message auditing is disabled on this deployment, so there is nothing to review
+                  here. Set <code className="font-mono">MESSAGE_AUDIT_ENABLED=true</code> on the
+                  backend to retain conversations for management monitoring.
+                </p>
+              )}
               <div className="mt-4 max-h-[32rem] space-y-1 overflow-y-auto">
                 {conversations.map((conversation) => {
                   const active =

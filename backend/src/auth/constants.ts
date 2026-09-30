@@ -28,3 +28,11 @@ export const jwtConstants = {
   // Evaluated at startup: throws and aborts boot when JWT_SECRET is unset or weak.
   secret: requireJwtSecret(),
 };
+
+/**
+ * Session lifetime. Defaults to 12 hours: short enough that a leaked token has
+ * a bounded window, long enough not to annoy a working day. Deactivation and
+ * password resets do not wait for it — those revoke immediately through the
+ * per-request account check and `tokenVersion`.
+ */
+export const jwtExpiresIn = process.env.JWT_EXPIRES_IN?.trim() || '12h';
