@@ -1,0 +1,121 @@
+# ConnectSocial — production stack for a single always-on host.
+#
+#   docker compose up -d --build
+#
+# Every value below comes from the `.env` file next to this compose file; see
+# .env.example for the full list and README.md ("Deployment") for the runbook —
+# including the one-time schema bootstrap on the very first boot.
+
+name: connectsocial
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---------------------------------------------------------------------------
+  # MySQL 8 — internal only, never published to the host.
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — copy .env.example to .env}
+      MYSQL_DATABASE: ${DB_NAME:-connect_social}
+      MYSQL_USER: ${DB_USERNAME:-connect_social}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — copy .env.example to .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # NestJS API + WebSocket hub. Caddy reaches it at api:3001.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: connectsocial-api
+    restart: unless-stopped
+    environment:
+      # First boot only: NODE_ENV=development + DB_SYNCHRONIZE=true creates the
+      # schema and seeds demo data (see README step 5). Afterwards keep
+      # NODE_ENV=production, DB_SYNCHRONIZE=false, DB_MIGRATIONS_RUN=true.
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3001
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required — copy .env.example to .env}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: ${DB_USERNAME:-connect_social}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — copy .env.example to .env}
+      DB_NAME: ${DB_NAME:-connect_social}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-false}
+      DB_MIGRATIONS_RUN: ${DB_MIGRATIONS_RUN:-true}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — copy .env.example to .env}
+      UPLOAD_DIR: /app/uploads
+      # Number of reverse-proxy hops in front of the API (Caddy = 1).
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Next.js frontend, served with `next start` (server mode keeps the headers
+  # configured in next.config.js and supports the dynamic /profile/[id] route).
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required — copy .env.example to .env}
+    image: connectsocial-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      - api
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Caddy — the only public entry point. Terminates TLS with an automatic
+  # Let's Encrypt certificate for ${DOMAIN} and routes by path.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required — copy .env.example to .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - api
+    logging: *default-logging
+
+volumes:
+  mysql-data:
+  uploads:
+  caddy-data:
+  caddy-config:

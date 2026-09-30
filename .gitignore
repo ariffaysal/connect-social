@@ -5,6 +5,8 @@ dist
 # Runtime image uploads (backend/uploads). NOT backend/src/uploads, which is
 # a source module that must stay tracked.
 backend/uploads
+# Local database / uploads backups written by deploy/backup.sh
+backups
 .env
 .env.local
 .env.*.local

@@ -14,8 +14,30 @@ const express = require('express');
 
 const logger = new Logger('Bootstrap');
 
+/**
+ * Reverse-proxy support.
+ *
+ * Behind a reverse proxy (Caddy, nginx, Cloudflare Tunnel) Express must honor
+ * `X-Forwarded-Proto`, otherwise `req.protocol` reports `http` and the uploads
+ * endpoint returns `http://` image URLs which browsers refuse to load on an
+ * HTTPS page (mixed content). It also lets rate limiting see the real client
+ * IP instead of the proxy's.
+ *
+ * TRUST_PROXY: number of proxy hops (default 1), `true` to trust all hops, or
+ * `false` when the API is exposed directly with no proxy in front of it.
+ */
+function resolveTrustProxy(): boolean | number | string {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) return 1;
+  if (raw === 'false') return false;
+  if (raw === 'true') return true;
+  const hops = Number(raw);
+  return Number.isInteger(hops) && hops >= 1 ? hops : raw;
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.set('trust proxy', resolveTrustProxy());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.use(compression());
 

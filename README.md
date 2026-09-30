@@ -195,45 +195,180 @@ Base URL: `http://localhost:3001` — every request (except login) requires `Aut
 
 ## ☁️ Deployment
 
-### Local build & run (production mode)
+### Overview
 
-Build the backend, then start it:
+ConnectSocial ships with a production Docker Compose stack — MySQL 8, the NestJS
+API (REST + WebSocket), the Next.js frontend and Caddy for automatic HTTPS —
+that runs for **$0** on a free always-on VM. Everything is served from a single
+HTTPS origin:
 
-```bash
-cd backend
-npm install
-npm run build
-npm start
+```
+https://<your-domain>
+├── /api/*      -> NestJS API + WebSocket hub (the /api prefix is stripped)
+├── /uploads/*  -> NestJS (uploaded post images)
+└── /*          -> Next.js frontend (next start)
 ```
 
-The frontend is a static Next.js export you can serve from any web server:
+The app needs a long-running process (WebSocket hub) and a persistent disk
+(uploaded images), which is why it is deployed to a small VM rather than a
+serverless or scale-to-zero platform.
+
+### 0. Try the production stack locally (optional)
 
 ```bash
-cd frontend
-NEXT_PUBLIC_API_URL=http://localhost:3001 npm run build
-npx serve out
+cp .env.example .env
+# in .env: DOMAIN=localhost, NEXT_PUBLIC_API_URL=http://localhost/api,
+#          CORS_ORIGIN=http://localhost
+docker compose up -d --build
 ```
 
-### Self-hosting on a server
+Then open `https://localhost` — Caddy creates a local certificate for
+`localhost`, so the browser warns once. (Use HTTPS; Caddy redirects from HTTP.)
 
-The API needs a Node.js runtime and a reachable MySQL database. Set these environment variables (or edit `backend/.env`):
+### 1. Create the free server
+
+Oracle Cloud's **Always Free** tier includes a permanently free VM (Ampere ARM,
+2 OCPU / 12 GB RAM, ~200 GB of storage):
+
+1. Sign up at <https://www.oracle.com/cloud/free/>. A card is required for
+   identity verification; Always Free resources are never charged.
+2. Create an instance: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex**
+   (2 OCPU / 12 GB), 100 GB boot volume, and add your SSH public key.
+3. If creation fails with "Out of host capacity", try another availability
+   domain — or the always-free AMD micro shape (1 GB RAM; add 2 GB of swap).
+4. Note the instance's public IP.
+
+### 2. Open ports 80 and 443
+
+Both layers are required on Oracle:
+
+- **VCN security list** — Networking → Virtual Cloud Networks → your VCN →
+  Subnet → Security Lists → Add Ingress Rules: source `0.0.0.0/0`, TCP 80 & 443.
+- **Instance firewall** — Oracle's Ubuntu images drop everything except SSH:
+
+  ```bash
+  sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+  sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+  sudo netfilter-persistent save
+  ```
+
+### 3. Point a free domain at the server
+
+Create a subdomain at <https://www.duckdns.org> (say `connectsocial`) and set
+its IP to the instance's public IP. Verify from your own machine:
 
 ```bash
-PORT=3001
-CORS_ORIGIN=http://localhost:3000,http://localhost:3001   # or * to allow all
-DB_HOST=your-mysql-host
-DB_PORT=3306
-DB_USERNAME=your-db-user
-DB_PASSWORD=your-db-password
-DB_NAME=connect_social
-DB_SYNCHRONIZE=false                            # use migrations in production
-DB_MIGRATIONS_RUN=true                          # apply checked-in migrations at startup
-JWT_SECRET=<long-random-value>                  # openssl rand -base64 48
+dig +short connectsocial.duckdns.org
 ```
 
-> 📦 Uploaded images are stored in an `uploads/` directory next to the backend process — make sure that directory is **persistent** on your host (a mounted volume, or a disk on a VPS).
+DNS must already resolve to the server before the first start, because Caddy
+requests a Let's Encrypt certificate on boot.
 
-> 🔌 The WebSocket endpoint (`/ws`) requires a long-running server process — use a persistent Node host (Railway, Render, VPS), not a serverless platform.
+### 4. Install Docker and start the stack
+
+On the server:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER" && newgrp docker
+
+sudo mkdir -p /opt/connectsocial && sudo chown "$USER" /opt/connectsocial
+git clone YOUR_REPO_URL /opt/connectsocial   # for a private repo use its SSH URL + a deploy key
+cd /opt/connectsocial
+
+cp .env.example .env
+openssl rand -base64 48      # paste the output into JWT_SECRET
+nano .env                    # DOMAIN, NEXT_PUBLIC_API_URL, CORS_ORIGIN,
+                             # DB_PASSWORD, JWT_SECRET
+```
+
+### 5. First boot — create the schema, then lock it down
+
+The repository has no baseline migration and production mode never creates
+tables on its own, so the **first** start runs with the `.env.example` defaults
+`NODE_ENV=development` + `DB_SYNCHRONIZE=true`. That creates every table and
+seeds the demo data:
+
+```bash
+docker compose up -d --build
+docker compose ps                 # wait until api and mysql report healthy
+curl -s https://YOUR_DOMAIN/api/health
+```
+
+Then switch to production behaviour so later starts never mutate the schema:
+
+```bash
+sed -i 's/^NODE_ENV=.*/NODE_ENV=production/; s/^DB_SYNCHRONIZE=.*/DB_SYNCHRONIZE=false/; s/^DB_MIGRATIONS_RUN=.*/DB_MIGRATIONS_RUN=true/' .env
+docker compose up -d
+```
+
+### 6. Secure the seeded demo accounts
+
+The first boot seeds `admin`/`password`, `moderator`/`password`,
+`user`/`password` and `guest`/`guest123`. Before sharing the URL:
+
+1. Log in as **admin / password**.
+2. Admin → open the `admin` account → set a strong password.
+3. Deactivate (or delete) `moderator`, `user` and `guest`, then create real
+   accounts with the right roles — disabled accounts cannot log in.
+
+### 7. Verify the deployment
+
+- `https://YOUR_DOMAIN` loads with a valid certificate, and plain HTTP redirects.
+- Login, posting, commenting and reacting all work.
+- Open the app in two browsers: a new post in one shows the live toast and bell
+  badge in the other (WebSocket through Caddy).
+- Uploading an image returns an `https://…/uploads/…` URL that renders in the feed.
+- `docker compose restart api`, then reload — the uploaded image is still there.
+
+### Operating the deployment
+
+```bash
+docker compose ps               # status + health
+docker compose logs -f api      # follow logs (caddy / web / mysql too)
+docker compose up -d --build    # apply updates after `git pull`
+docker compose down             # stop; data stays in the named volumes
+```
+
+**Backups** — `deploy/backup.sh` dumps the database and archives the uploaded
+images into `./backups` (7-day rotation by default):
+
+```bash
+crontab -e
+15 3 * * * /opt/connectsocial/deploy/backup.sh >> /var/log/connectsocial-backup.log 2>&1
+```
+
+Copy those archives off the machine (`scp`, `rclone`, …) — a backup that only
+exists on the server is not a backup. Certificates live in the `caddy-data`
+volume and renew automatically.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+| ------- | ------------ |
+| No certificate / HTTPS handshake fails | DNS not pointing at the server yet, or port 80 blocked — check `docker compose logs caddy` |
+| `502` from Caddy | `api` or `web` still starting or crashed — `docker compose ps`, then `docker compose logs api` |
+| API up but "table doesn't exist" | First boot was skipped — redo step 5 |
+| Uploaded images don't render | `TRUST_PROXY` must be `1` behind Caddy (it is by default) |
+| Live notifications never arrive | Socket path is `/api/ws`; check the browser console and `docker compose logs caddy` |
+| Changed `DOMAIN`, app still calls the old URL | `NEXT_PUBLIC_API_URL` is compiled in at build time — `docker compose up -d --build web` |
+
+### Cost
+
+$0 — Oracle Always Free VM, DuckDNS subdomain, Let's Encrypt certificates and
+Docker are all free. Optional extras that cost money: a custom domain, or a
+second free VM / off-site storage for backups.
+
+### Manual (non-Docker) alternative
+
+```bash
+cd backend  && npm install && npm run build && npm start     # port 3001
+cd frontend && NEXT_PUBLIC_API_URL=http://localhost:3001 npm run build && npm start
+```
+
+Set the backend environment variables manually (see `backend/.env.example`) and
+put a reverse proxy in front of both. The Compose runbook above is what this
+repository tests and supports.
 
 ---
 

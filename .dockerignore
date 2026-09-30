@@ -1,0 +1,29 @@
+# Docker build context is the repository root, so keep everything that is not
+# source code out of the images.
+
+# Dependencies and build output
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+**/coverage
+
+# Secrets and local overrides — never bake these into an image
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Runtime data / local artifacts
+backend/uploads
+backend/backups
+backups
+*.log
+
+# Repository & tooling metadata
+.git
+.gitattributes
+.github
+.freebuff
+.video
+ConnectSocial-Promo.mp4

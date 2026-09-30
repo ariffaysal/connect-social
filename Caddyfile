@@ -1,0 +1,27 @@
+# ConnectSocial reverse proxy.
+#
+# Caddy terminates TLS (automatic Let's Encrypt certificate for $DOMAIN) and
+# serves the whole app from a single origin:
+#
+#   /api/*      -> NestJS API + WebSocket hub. The /api prefix is stripped, so
+#                  the backend sees its native routes (/auth, /posts, /ws, ...).
+#   /uploads/*  -> NestJS (uploaded post images).
+#   /*          -> Next.js frontend.
+#
+# $DOMAIN is provided by docker-compose (the DOMAIN variable in .env).
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy api:3001
+	}
+
+	handle /uploads/* {
+		reverse_proxy api:3001
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
